@@ -6,45 +6,125 @@ function getDanmuTop({
     marginBottom,
     marginTop,
     antiOverlap,
-    density = 1,           // 0=最稀疏, 1=普通, 2=密集
+    density = 1,
     minVerticalGap = 12
 }) {
     const maxTop = clientHeight - marginBottom;
 
-    // 只处理滚动弹幕（mode 0），顶部/底部保持简单逻辑
-    if (target.mode !== 0) {
-        const danmus = visibles
-            .filter(item => item.mode === target.mode)
+    // 根据 density 动态计算安全间距
+    const gapMultiplier = density === 0 ? 2.2 : density === 1 ? 1.4 : 1.0;
+    const safeGap = Math.round(minVerticalGap * gapMultiplier);
+
+    // ====================== 模式 1：顶部固定弹幕 ======================
+    if (target.mode === 1) {
+        let danmus = visibles
+            .filter(item => item.mode === 1)
+            .sort((a, b) => a.top - b.top);
+
+        // 如果没有任何顶部弹幕，直接放在最顶部
+        if (danmus.length === 0) {
+            return marginTop;
+        }
+
+        const safeGap = minVerticalGap + (density === 0 ? 18 : density === 1 ? 10 : 4);
+
+        // 1. 优先从上到下找干净空隙
+        for (let i = 0; i < danmus.length; i++) {
+            const prevBottom = (i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height);
+            const diff = danmus[i].top - prevBottom;
+
+            if (diff >= target.height + safeGap) {
+                return prevBottom;
+            }
+        }
+
+        // 2. 如果所有位置都满了，根据 density 决定是否强行插入（在最大空隙中间）
+        if (density >= 1) {
+            let maxGap = 0;
+            let bestY = marginTop;
+
+            for (let i = 0; i < danmus.length; i++) {
+                const prevBottom = (i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height);
+                const gap = danmus[i].top - prevBottom;
+                if (gap > maxGap) {
+                    maxGap = gap;
+                    bestY = prevBottom + (gap - target.height) / 2;
+                }
+            }
+
+            // density 越低，要求空隙越大；density=2 时更激进允许重叠
+            const requiredGap = target.height * (density === 0 ? 1.2 : density === 1 ? 0.8 : 0.5);
+            if (maxGap >= requiredGap) {
+                return Math.max(marginTop, Math.min(Math.floor(bestY), maxTop - target.height));
+            }
+        }
+
+        // 3. 最后兜底：强制放在最后一条下面（即使会轻微重叠）
+        const last = danmus[danmus.length - 1];
+        const lastBottom = last.top + last.height;
+        if (lastBottom + target.height + safeGap <= maxTop) {
+            return lastBottom + safeGap;
+        }
+
+        // 实在放不下，返回 undefined（会被丢弃）
+        return undefined;
+    }
+
+    // ====================== 模式 2：底部固定弹幕 ======================
+    if (target.mode === 2) {
+        let danmus = visibles
+            .filter(item => item.mode === 2)
             .sort((a, b) => a.top - b.top);
 
         if (danmus.length === 0) {
-            return target.mode === 2 ? maxTop - target.height : marginTop;
+            return maxTop - target.height;
         }
 
-        // 顶部/底部固定弹幕暂时不做复杂 density 处理
-        return target.mode === 2
-            ? maxTop - target.height
-            : marginTop;
+        // 从下往上寻找空隙
+        for (let i = danmus.length - 1; i >= 0; i--) {
+            const itemBottom = danmus[i].top + danmus[i].height;
+            const diff = maxTop - itemBottom;
+
+            if (diff >= target.height + safeGap) {
+                return maxTop - target.height;
+            }
+        }
+
+        // 找不到时尝试在最大空隙插入
+        if (density >= 1) {
+            let maxGap = 0;
+            let bestY = maxTop - target.height;
+
+            for (let i = 0; i < danmus.length; i++) {
+                const prevBottom = (i === 0 ? 0 : danmus[i - 1].top + danmus[i - 1].height);
+                const gap = danmus[i].top - prevBottom;
+                if (gap > maxGap) {
+                    maxGap = gap;
+                    bestY = prevBottom + (gap - target.height) / 2;
+                }
+            }
+
+            if (maxGap >= target.height * (density === 1 ? 0.75 : 0.55)) {
+                return Math.max(marginTop, Math.min(bestY, maxTop - target.height));
+            }
+        }
+
+        return undefined;
     }
 
-    // ====================== 滚动弹幕核心逻辑 ======================
+    // ====================== 模式 0：滚动弹幕 ======================
     let danmus = visibles
         .filter(item => item.mode === 0)
         .sort((a, b) => a.top - b.top);
 
     if (danmus.length === 0) {
-        return marginTop;
+        return marginTop + (density === 0 ? 35 : 18);
     }
 
-    // 根据 density 大幅调整垂直间距（这是让稀疏明显的关键）
-    const gapMultiplier = density === 0 ? 2.2 : density === 1 ? 1.35 : 1.0;
-    const safeGap = Math.round(minVerticalGap * gapMultiplier);
-
-    // 上下虚拟边界
     danmus.unshift({ top: 0, height: marginTop });
     danmus.push({ top: maxTop, height: marginBottom });
 
-    // 第一优先级：找干净的足够大空隙（干净插入）
+    // 优先干净插入
     for (let i = 1; i < danmus.length; i++) {
         const prev = danmus[i - 1];
         const curr = danmus[i];
@@ -52,11 +132,11 @@ function getDanmuTop({
         const diff = curr.top - prevBottom;
 
         if (diff >= target.height + safeGap) {
-            return prevBottom;           // 找到干净位置，直接返回
+            return prevBottom;
         }
     }
 
-    // 第二优先级：根据 density 在最大空隙中间插入（最重要！）
+    // density 控制的优雅插入
     if (density >= 1) {
         let maxGap = 0;
         let bestY = marginTop;
@@ -65,47 +145,18 @@ function getDanmuTop({
             const prev = danmus[i - 1];
             const curr = danmus[i];
             const gap = curr.top - (prev.top + prev.height);
-
             if (gap > maxGap) {
                 maxGap = gap;
                 bestY = prev.top + prev.height + (gap - target.height) / 2;
             }
         }
 
-        // density=0 时要求更大空隙才插入，density=2 更激进
-        const requiredGapRatio = density === 0 ? 1.1 : density === 1 ? 0.75 : 0.55;
-        if (maxGap >= target.height * requiredGapRatio) {
-            return Math.max(marginTop, Math.min(Math.floor(bestY), maxTop - target.height));
+        const requiredRatio = density === 1 ? 0.75 : 0.55;
+        if (maxGap >= target.height * requiredRatio) {
+            return Math.max(marginTop, Math.min(bestY, maxTop - target.height));
         }
     }
 
-    // 第三优先级：如果开了 antiOverlap，尝试原有防重叠逻辑作为兜底
-    if (antiOverlap) {
-        // 你原来的 topMap + 防重叠逻辑（简化保留）
-        const topMap = [];
-        for (let i = 1; i < danmus.length - 1; i++) {
-            const item = danmus[i];
-            if (!item.speed) continue;
-            if (topMap.length && topMap[topMap.length - 1][0].top === item.top) {
-                topMap[topMap.length - 1].push(item);
-            } else {
-                topMap.push([item]);
-            }
-        }
-
-        const result = topMap.find(list =>
-            list.every(danmu => {
-                if (clientWidth < (danmu.distance || danmu.width)) return false;
-                if (target.speed < danmu.speed) return true;
-                const overlapTime = (danmu.right || 0) / (target.speed - danmu.speed);
-                return overlapTime > (danmu.time || 999);
-            })
-        );
-
-        if (result && result[0]) return result[0].top;
-    }
-
-    // 实在放不下，返回 undefined（由主线程转 ready，等待弹幕离开）
     return undefined;
 }
 
