@@ -265,34 +265,54 @@ export default class Setting {
 
   get SPEED() {
     return {
-      min: 0,
-      max: 4,
-      steps: [
+    min: 0,
+    max: 8,
+    steps: [
         {
-          name: '极慢',
-          value: 10,
+        name: "极慢",
+        value: 20
         },
         {
-          name: '较慢',
-          value: 7.5,
-          hide: true,
+        name: "较慢",
+        value: 18,
+        hide: true
         },
         {
-          name: '适中',
-          value: 5,
+        name: "较慢",
+        value: 16,
+        hide: true
         },
         {
-          name: '较快',
-          value: 2.5,
-          hide: true,
+        name: "较慢",
+        value: 14,
+        hide: true
         },
         {
-          name: '极快',
-          value: 1,
+        name: "适中",
+        value: 12,
         },
-      ],
-      ...this.option.SPEED,
-    }
+        {
+        name: "较快",
+        value: 10,
+        hide: true
+        },
+        {
+        name: "较快",
+        value: 8,
+        hide: true
+        },
+        {
+        name: "较快",
+        value: 6,
+        hide: true
+        },
+        {
+        name: "极快",
+        value: 4,
+        },
+    ],
+    ...this.option.SPEED
+    };
   }
 
   get COLOR() {
