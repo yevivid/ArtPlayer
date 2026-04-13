@@ -51,6 +51,7 @@ export default class Setting {
       margin: null,
       fontSize: null,
       speed: null,
+      maxCount: null,
     }
 
     this.emitting = false
@@ -153,6 +154,11 @@ export default class Setting {
                             显示区域
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
+                        </div>
+                        <div class="apd-config-slider apd-config-maxCount">
+                            同屏上限
+                            <div class="apd-slider"></div>
+                            <div class="apd-value">150</div>
                         </div>
                         <div class="apd-config-slider apd-config-fontSize">
                             弹幕字号
@@ -359,6 +365,8 @@ export default class Setting {
     this.template.$fontSizeValue = this.query('.apd-config-fontSize .apd-value')
     this.template.$speedSlider = this.query('.apd-config-speed .apd-slider')
     this.template.$speedValue = this.query('.apd-config-speed .apd-value')
+    this.template.$maxCountSlider = this.query('.apd-config-maxCount .apd-slider')
+    this.template.$maxCountValue = this.query('.apd-config-maxCount .apd-value')
     this.template.$input = this.query('.apd-input')
     this.template.$send = this.query('.apd-send')
 
@@ -513,6 +521,24 @@ export default class Setting {
         $speedValue.textContent = speed.name
         this.danmuku.config({
           speed: speed.value,
+        })
+      },
+    })
+
+    this.slider.maxCount = this.createSlider({
+      min: 5,
+      max: 100,
+      steps: [],                    // 不使用 steps，用连续滑动
+      container: this.template.$maxCountSlider,
+      findIndex: () => {
+        return this.option.maxCount || 150
+      },
+      onChange: (value) => {
+        const { $maxCountValue } = this.template
+        $maxCountValue.textContent = `${value} 条`
+
+        this.danmuku.config({
+          maxCount: value
         })
       },
     })
@@ -724,6 +750,7 @@ export default class Setting {
     this.slider.margin.reset()
     this.slider.fontSize.reset()
     this.slider.speed.reset()
+    this.slider.maxCount.reset()
 
     this.setData('danmukuVisible', this.option.visible)
     this.setData('danmukuMode', this.option.mode)

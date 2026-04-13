@@ -80,7 +80,7 @@ export default class Danmuku {
       SPEED: {}, // 弹幕速度配置项
       COLOR: [], // 颜色列表配置项
       density: 0,                    // 新增：0=稀疏（最舒服）, 1=普通（推荐默认）, 2=密集
-      maxCount: 150,                 // 新增或修改：同屏上限，默认建议 120~180，根据设备可调
+      maxCount: 20,                 // 新增或修改：同屏上限，默认建议 5~100，根据设备可调
       minVerticalGap: 12,            // 新增：基础最小垂直间距（像素），会随 density 动态调整
     }
   }
@@ -419,7 +419,7 @@ export default class Danmuku {
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
     this.option.density = this.utils.clamp(this.option.density ?? 1, 0, 2);
-    this.option.maxCount = this.utils.clamp(this.option.maxCount ?? 150, 20, 500);
+    this.option.maxCount = this.utils.clamp(this.option.maxCount ?? 20, 5, 100);
     this.option.minVerticalGap = this.utils.clamp(this.option.minVerticalGap ?? 12, 4, 40);
     this.option.mount = this.option.mount || $controlsCenter
 
