@@ -1,138 +1,112 @@
-function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom, marginTop, antiOverlap }) {
-  // 弹幕最大高度
-  const maxTop = clientHeight - marginBottom
+function getDanmuTop({
+    target,
+    visibles,
+    clientWidth,
+    clientHeight,
+    marginBottom,
+    marginTop,
+    antiOverlap,
+    density = 1,           // 0=最稀疏, 1=普通, 2=密集
+    minVerticalGap = 12
+}) {
+    const maxTop = clientHeight - marginBottom;
 
-  // 过滤同模式的弹幕，即每种模式各不影响
-  const danmus = visibles
-    .filter(item => item.mode === target.mode && item.top <= maxTop)
-    .sort((prev, next) => prev.top - next.top)
+    // 只处理滚动弹幕（mode 0），顶部/底部保持简单逻辑
+    if (target.mode !== 0) {
+        const danmus = visibles
+            .filter(item => item.mode === target.mode)
+            .sort((a, b) => a.top - b.top);
 
-  // 如果没有同模式的弹幕，直接返回
-  if (danmus.length === 0) {
-    if (target.mode === 2) {
-      return maxTop - target.height
-    }
-    else {
-      return marginTop
-    }
-  }
+        if (danmus.length === 0) {
+            return target.mode === 2 ? maxTop - target.height : marginTop;
+        }
 
-  // 上下各加一个虚拟弹幕，方便计算
-  danmus.unshift({
-    type: 'top',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: marginTop,
-    width: clientWidth,
-    speed: 0,
-    distance: clientWidth,
-  })
-
-  danmus.push({
-    type: 'bottom',
-    top: maxTop,
-    left: 0,
-    right: 0,
-    height: marginBottom,
-    width: clientWidth,
-    speed: 0,
-    distance: clientWidth,
-  })
-
-  // 查找是否有多余的缝隙足以容纳当前弹幕
-  if (target.mode === 2) {
-    // 倒序查找
-    for (let index = danmus.length - 2; index >= 0; index -= 1) {
-      const item = danmus[index]
-      const prev = danmus[index + 1]
-      const itemBottom = item.top + item.height
-      const diff = prev.top - itemBottom
-      if (diff >= target.height) {
-        return prev.top - target.height
-      }
-    }
-  }
-  else {
-    // 顺序查找
-    for (let index = 1; index < danmus.length; index += 1) {
-      const item = danmus[index]
-      const prev = danmus[index - 1]
-      const prevBottom = prev.top + prev.height
-      const diff = item.top - prevBottom
-      if (diff >= target.height) {
-        return prevBottom
-      }
-    }
-  }
-
-  const topMap = []
-  for (let index = 1; index < danmus.length - 1; index += 1) {
-    const item = danmus[index]
-    if (topMap.length) {
-      const last = topMap[topMap.length - 1]
-      if (last[0].top === item.top) {
-        last.push(item)
-      }
-      else {
-        topMap.push([item])
-      }
-    }
-    else {
-      topMap.push([item])
-    }
-  }
-
-  if (antiOverlap) {
-    switch (target.mode) {
-      case 0: {
-        const result = topMap.find((list) => {
-          return list.every((danmu) => {
-            if (clientWidth < danmu.distance)
-              return false
-            if (target.speed < danmu.speed)
-              return true
-            const overlapTime = danmu.right / (target.speed - danmu.speed)
-            if (overlapTime > danmu.time)
-              return true
-            return false
-          })
-        })
-
-        return result && result[0] ? result[0].top : undefined
-      }
-
-      // 静止弹幕没有重叠问题
-      case 1:
-      case 2:
-        return undefined
-      default:
-        break
-    }
-  }
-  else {
-    switch (target.mode) {
-      case 0:
-        topMap.sort((prev, next) => {
-          const nextMinRight = Math.min(...next.map(item => item.right))
-          const prevMinRight = Math.min(...prev.map(item => item.right))
-          return nextMinRight * next.length - prevMinRight * prev.length
-        })
-        break
-      case 1:
-      case 2:
-        topMap.sort((prev, next) => {
-          const nextMaxWidth = Math.max(...next.map(item => item.width))
-          const prevMaxWidth = Math.max(...prev.map(item => item.width))
-          return prevMaxWidth * prev.length - nextMaxWidth * next.length
-        })
-        break
-      default:
-        break
+        // 顶部/底部固定弹幕暂时不做复杂 density 处理
+        return target.mode === 2
+            ? maxTop - target.height
+            : marginTop;
     }
 
-    return topMap[0][0].top
-  }
+    // ====================== 滚动弹幕核心逻辑 ======================
+    let danmus = visibles
+        .filter(item => item.mode === 0)
+        .sort((a, b) => a.top - b.top);
+
+    if (danmus.length === 0) {
+        return marginTop;
+    }
+
+    // 根据 density 大幅调整垂直间距（这是让稀疏明显的关键）
+    const gapMultiplier = density === 0 ? 2.2 : density === 1 ? 1.35 : 1.0;
+    const safeGap = Math.round(minVerticalGap * gapMultiplier);
+
+    // 上下虚拟边界
+    danmus.unshift({ top: 0, height: marginTop });
+    danmus.push({ top: maxTop, height: marginBottom });
+
+    // 第一优先级：找干净的足够大空隙（干净插入）
+    for (let i = 1; i < danmus.length; i++) {
+        const prev = danmus[i - 1];
+        const curr = danmus[i];
+        const prevBottom = prev.top + prev.height;
+        const diff = curr.top - prevBottom;
+
+        if (diff >= target.height + safeGap) {
+            return prevBottom;           // 找到干净位置，直接返回
+        }
+    }
+
+    // 第二优先级：根据 density 在最大空隙中间插入（最重要！）
+    if (density >= 1) {
+        let maxGap = 0;
+        let bestY = marginTop;
+
+        for (let i = 1; i < danmus.length; i++) {
+            const prev = danmus[i - 1];
+            const curr = danmus[i];
+            const gap = curr.top - (prev.top + prev.height);
+
+            if (gap > maxGap) {
+                maxGap = gap;
+                bestY = prev.top + prev.height + (gap - target.height) / 2;
+            }
+        }
+
+        // density=0 时要求更大空隙才插入，density=2 更激进
+        const requiredGapRatio = density === 0 ? 1.1 : density === 1 ? 0.75 : 0.55;
+        if (maxGap >= target.height * requiredGapRatio) {
+            return Math.max(marginTop, Math.min(Math.floor(bestY), maxTop - target.height));
+        }
+    }
+
+    // 第三优先级：如果开了 antiOverlap，尝试原有防重叠逻辑作为兜底
+    if (antiOverlap) {
+        // 你原来的 topMap + 防重叠逻辑（简化保留）
+        const topMap = [];
+        for (let i = 1; i < danmus.length - 1; i++) {
+            const item = danmus[i];
+            if (!item.speed) continue;
+            if (topMap.length && topMap[topMap.length - 1][0].top === item.top) {
+                topMap[topMap.length - 1].push(item);
+            } else {
+                topMap.push([item]);
+            }
+        }
+
+        const result = topMap.find(list =>
+            list.every(danmu => {
+                if (clientWidth < (danmu.distance || danmu.width)) return false;
+                if (target.speed < danmu.speed) return true;
+                const overlapTime = (danmu.right || 0) / (target.speed - danmu.speed);
+                return overlapTime > (danmu.time || 999);
+            })
+        );
+
+        if (result && result[0]) return result[0].top;
+    }
+
+    // 实在放不下，返回 undefined（由主线程转 ready，等待弹幕离开）
+    return undefined;
 }
 
 onmessage = (event) => {

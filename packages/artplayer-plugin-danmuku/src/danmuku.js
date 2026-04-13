@@ -79,6 +79,9 @@ export default class Danmuku {
       MARGIN: {}, // 显示区域配置项
       SPEED: {}, // 弹幕速度配置项
       COLOR: [], // 颜色列表配置项
+      density: 0,                    // 新增：0=稀疏（最舒服）, 1=普通（推荐默认）, 2=密集
+      maxCount: 150,                 // 新增或修改：同屏上限，默认建议 120~180，根据设备可调
+      minVerticalGap: 12,            // 新增：基础最小垂直间距（像素），会随 density 动态调整
     }
   }
 
@@ -112,6 +115,9 @@ export default class Danmuku {
       MARGIN: 'object',
       SPEED: 'object',
       COLOR: 'array',
+      density: 'number',
+      maxCount: 'number',
+      minVerticalGap: 'number',
     }
   }
 
@@ -412,6 +418,9 @@ export default class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
+    this.option.density = this.utils.clamp(this.option.density ?? 1, 0, 2);
+    this.option.maxCount = this.utils.clamp(this.option.maxCount ?? 150, 20, 500);
+    this.option.minVerticalGap = this.utils.clamp(this.option.minVerticalGap ?? 12, 4, 40);
     this.option.mount = this.option.mount || $controlsCenter
 
     // 动态配置有字体大小，需要重新渲染
@@ -516,6 +525,12 @@ export default class Danmuku {
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index]
 
+          // === 新增：maxCount 硬限制 ===
+          if (this.states.emit.length >= this.option.maxCount) {
+              this.setState(danmu, 'ready');   // 超过上限，转为 ready，等待后面弹幕消失后再尝试
+              continue;
+          }
+
           // 弹幕发送前的过滤器
           const state = await this.option.beforeVisible(danmu)
 
@@ -554,6 +569,9 @@ export default class Danmuku {
               }, // 当前弹幕信息
               visibles: this.visibles, // 可见的弹幕的数据
               antiOverlap: this.option.antiOverlap,
+              density: this.option.density,           // 新增
+              minVerticalGap: this.option.minVerticalGap, // 新增
+              maxCount: this.option.maxCount,         // 可选传过去，Worker 里也可参考
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
@@ -621,17 +639,19 @@ export default class Danmuku {
 
   // 重置正在显示的弹幕: stop/emit 状态的弹幕
   resize() {
-    // 因为滚动弹幕(mode 0)绑定了left=0原点，resize时它的相对位移不会错乱，
-    // 所以只需要针对中间悬浮(mode 1, 2)做调整，彻底斩断弹幕缩放狂飙的问题。
-    const fixCenter = (danmu) => {
-      if (danmu.mode === 1 || danmu.mode === 2) {
-        danmu.$ref.style.left = '50%'
-        danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
-      }
-    }
+      // 强制把正在显示的弹幕重置为 wait 状态，让它们重新计算 top
+      // 这能有效打破初始堆叠
+      this.filter('emit', (danmu) => {
+          this.makeWait(danmu);
+          this.setState(danmu, 'wait');   // 重新进入等待队列，下次 update 会重新计算
+      });
+      this.filter('stop', (danmu) => {
+          this.makeWait(danmu);
+          this.setState(danmu, 'wait');
+      });
 
-    this.filter('stop', fixCenter)
-    this.filter('emit', fixCenter)
+      this.art.emit('artplayerPluginDanmuku:resize');
+      return this;
   }
 
   // 继续弹幕

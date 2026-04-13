@@ -222,30 +222,39 @@ export default class Setting {
     }
   }
 
+
   get MARGIN() {
     return {
       min: 0,
-      max: 3,
+      max: 5,
       steps: [
         {
-          name: '1/4',
-          value: [10, '75%'],
+          name: "1/6",
+          value: [10, "83%"]
         },
         {
-          name: '半屏',
-          value: [10, '50%'],
+          name: "1/3",
+          value: [10, "66%"]
         },
         {
-          name: '3/4',
-          value: [10, '25%'],
+          name: "半屏",
+          value: [10, "50%"]
         },
         {
-          name: '满屏',
-          value: [10, 10],
+          name: "2/3",
+          value: [10, "33%"]
         },
+        {
+          name: "5/6",
+          value: [10, "16%"]
+        },
+        {
+          name: "满屏",
+          value: [10, 10]
+        }
       ],
-      ...this.option.MARGIN,
-    }
+      ...this.option.MARGIN
+    };
   }
 
   get SPEED() {
