@@ -527,8 +527,16 @@ export default class Danmuku {
 
           // === 新增：maxCount 硬限制 ===
           if (this.states.emit.length >= this.option.maxCount) {
-              this.setState(danmu, 'ready');   // 超过上限，转为 ready，等待后面弹幕消失后再尝试
-              continue;
+            // 彻底丢弃这条弹幕，避免时间滞后
+            if (danmu.$ref) {
+                this.$refs.push(danmu.$ref);   // 回收 DOM 到池子（重要！）
+                danmu.$ref = null;
+            }
+
+            // 从 wait / ready 队列中彻底移除（防止残留）
+            this.states.wait = this.states.wait.filter(d => d !== danmu);
+            this.states.ready = this.states.ready.filter(d => d !== danmu);
+            continue;
           }
 
           // 弹幕发送前的过滤器
@@ -639,19 +647,17 @@ export default class Danmuku {
 
   // 重置正在显示的弹幕: stop/emit 状态的弹幕
   resize() {
-      // 强制把正在显示的弹幕重置为 wait 状态，让它们重新计算 top
-      // 这能有效打破初始堆叠
-      this.filter('emit', (danmu) => {
-          this.makeWait(danmu);
-          this.setState(danmu, 'wait');   // 重新进入等待队列，下次 update 会重新计算
-      });
-      this.filter('stop', (danmu) => {
-          this.makeWait(danmu);
-          this.setState(danmu, 'wait');
-      });
+    // 因为滚动弹幕(mode 0)绑定了left=0原点，resize时它的相对位移不会错乱，
+    // 所以只需要针对中间悬浮(mode 1, 2)做调整，彻底斩断弹幕缩放狂飙的问题。
+    const fixCenter = (danmu) => {
+      if (danmu.mode === 1 || danmu.mode === 2) {
+        danmu.$ref.style.left = '50%'
+        danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
+      }
+    }
 
-      this.art.emit('artplayerPluginDanmuku:resize');
-      return this;
+    this.filter('stop', fixCenter)
+    this.filter('emit', fixCenter)
   }
 
   // 继续弹幕
