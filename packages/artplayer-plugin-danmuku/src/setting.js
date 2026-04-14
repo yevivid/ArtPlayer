@@ -51,6 +51,7 @@ export default class Setting {
       margin: null,
       fontSize: null,
       speed: null,
+      density: null,
     }
 
     this.emitting = false
@@ -154,7 +155,7 @@ export default class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
-                        <div class="apd-config-slider apd-config-sparsity">
+                        <div class="apd-config-slider apd-config-density">
                             弹幕密度
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
@@ -227,7 +228,7 @@ export default class Setting {
     }
   }
 
-  get SPARSITY() {
+  get DENSITY() {
     return {
       min: 0,
       max: 8,
@@ -275,7 +276,7 @@ export default class Setting {
           value: 90
         }
       ],
-      ...this.option.SPARSITY
+      ...this.option.DENSITY
     };
   }
 
@@ -594,19 +595,21 @@ export default class Setting {
     })
 
     // 弹幕密度
-    this.slider.sparsity = this.createSlider({
-      ...this.SPARSITY,
-      container: this.query('.apd-config-sparsity .apd-slider'),   // 或 this.template.$sparsitySlider
+    this.slider.density = this.createSlider({
+      ...this.DENSITY,
+      container: this.query('.apd-config-density .apd-slider'),   // class 可以暂时不改，或改成 apd-config-density
       findIndex: () => {
-        return this.SPARSITY.steps.findIndex(item => item.value === this.option.sparsity)
+        return this.DENSITY.steps.findIndex(item => item.value === this.option.density)
       },
       onChange: (index) => {
-        const step = this.SPARSITY.steps[index]
+        const step = this.DENSITY.steps[index]
         if (!step) return
-        const valueEl = this.query('.apd-config-sparsity .apd-value')
+
+        const valueEl = this.query('.apd-config-density .apd-value')
         if (valueEl) valueEl.textContent = step.name
+
         this.danmuku.config({
-          sparsity: step.value
+          density: step.value
         })
       },
     })
@@ -818,7 +821,7 @@ export default class Setting {
     this.slider.margin.reset()
     this.slider.fontSize.reset()
     this.slider.speed.reset()
-    if (this.slider.sparsity) this.slider.sparsity.reset()
+    this.slider.density.reset()
 
     this.setData('danmukuVisible', this.option.visible)
     this.setData('danmukuMode', this.option.mode)

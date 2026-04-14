@@ -6,10 +6,10 @@ function getDanmuTop({
   marginBottom,
   marginTop,
   antiOverlap,
-  sparsity = 30,          // 10~90
+  density
 }) {
   const maxTop = clientHeight - marginBottom
-  const minGapRatio = sparsity / 100   // 0.1 ~ 0.9
+  const minGapRatio = density / 100   // 0.1 ~ 0.9
   const minHorizontalGap = Math.max(20, clientWidth * minGapRatio)  // 至少20px保护
 
   // ====================== 固定模式（mode 1 & 2）保持上版逻辑 ======================
@@ -17,7 +17,7 @@ function getDanmuTop({
     let danmus = visibles.filter(item => item.mode === 1).sort((a, b) => a.top - b.top)
     if (danmus.length === 0) return marginTop
 
-    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))  // sparsity越大间距越大
+    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))  // density越大间距越大
 
     for (let i = 0; i < danmus.length; i++) {
       const prevBottom = i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height

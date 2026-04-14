@@ -54,6 +54,7 @@ export default class Danmuku {
     return {
       danmuku: [], // 弹幕数据
       speed: 20, // 弹幕持续时间，范围在[1 ~ 10]
+      density: 30, // 弹幕密度，范围在[10 ~ 90]
       margin: [10, '25%'], // 弹幕上下边距，支持像素数字和百分比
       opacity: 1, // 弹幕透明度，范围在[0 ~ 1]
       color: '#FFFFFF', // 默认弹幕颜色，可以被单独弹幕项覆盖
@@ -77,11 +78,9 @@ export default class Danmuku {
       OPACITY: {}, // 不透明度配置项
       FONT_SIZE: {}, // 弹幕字号配置项
       MARGIN: {}, // 显示区域配置项
+      DENSITY: {}, // 弹幕密度配置项
       SPEED: {}, // 弹幕速度配置项
       COLOR: [], // 颜色列表配置项
-      density: 0,                    // 新增：0=稀疏（最舒服）, 1=普通（推荐默认）, 2=密集
-      maxCount: 20,                 // 新增或修改：同屏上限，默认建议 5~100，根据设备可调
-      minVerticalGap: 12,            // 新增：基础最小垂直间距（像素），会随 density 动态调整
     }
   }
 
@@ -116,8 +115,7 @@ export default class Danmuku {
       MARGIN: 'object',
       SPEED: 'object',
       COLOR: 'array',
-
-      sparsity: 'number',   // 新增
+      density: 'number',
     }
   }
 
@@ -418,7 +416,7 @@ export default class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
-    this.option.sparsity = clamp(this.option.sparsity ?? 30, 10, 90)   // 新增限制
+    this.option.density = clamp(this.option.density, 10, 90);   // 新增限制
 
     this.option.mount = this.option.mount || $controlsCenter
 
@@ -540,17 +538,17 @@ export default class Danmuku {
             const distance = clientWidth + danmu.$ref.clientWidth
             danmu.$restTime = distance / this.velocity
 
-            // === 关键修改：传 sparsity 给 Worker 计算 top ===
+            // === 关键修改：传 density 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
               type: 'getDanmuTop',
               target: {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
-                width: danmu.$ref.clientWidth,   // 新增：弹幕自身宽度
+                width: danmu.$ref.clientWidth,
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
-              sparsity: this.option.sparsity,     // 新参数
+              density: this.option.density,
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
