@@ -80,7 +80,7 @@ function bilibiliDanmuParseFromUrl(url) {
     }
   });
 }
-const jsContent = '/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom, marginTop, antiOverlap }) {\n  const maxTop = clientHeight - marginBottom;\n  const danmus = visibles.filter((item) => item.mode === target.mode && item.top <= maxTop).sort((prev, next) => prev.top - next.top);\n  if (danmus.length === 0) {\n    if (target.mode === 2) {\n      return maxTop - target.height;\n    } else {\n      return marginTop;\n    }\n  }\n  danmus.unshift({\n    type: "top",\n    top: 0,\n    left: 0,\n    right: 0,\n    height: marginTop,\n    width: clientWidth,\n    speed: 0,\n    distance: clientWidth\n  });\n  danmus.push({\n    type: "bottom",\n    top: maxTop,\n    left: 0,\n    right: 0,\n    height: marginBottom,\n    width: clientWidth,\n    speed: 0,\n    distance: clientWidth\n  });\n  if (target.mode === 2) {\n    for (let index = danmus.length - 2; index >= 0; index -= 1) {\n      const item = danmus[index];\n      const prev = danmus[index + 1];\n      const itemBottom = item.top + item.height;\n      const diff = prev.top - itemBottom;\n      if (diff >= target.height) {\n        return prev.top - target.height;\n      }\n    }\n  } else {\n    for (let index = 1; index < danmus.length; index += 1) {\n      const item = danmus[index];\n      const prev = danmus[index - 1];\n      const prevBottom = prev.top + prev.height;\n      const diff = item.top - prevBottom;\n      if (diff >= target.height) {\n        return prevBottom;\n      }\n    }\n  }\n  const topMap = [];\n  for (let index = 1; index < danmus.length - 1; index += 1) {\n    const item = danmus[index];\n    if (topMap.length) {\n      const last = topMap[topMap.length - 1];\n      if (last[0].top === item.top) {\n        last.push(item);\n      } else {\n        topMap.push([item]);\n      }\n    } else {\n      topMap.push([item]);\n    }\n  }\n  if (antiOverlap) {\n    switch (target.mode) {\n      case 0: {\n        const result = topMap.find((list) => {\n          return list.every((danmu) => {\n            if (clientWidth < danmu.distance)\n              return false;\n            if (target.speed < danmu.speed)\n              return true;\n            const overlapTime = danmu.right / (target.speed - danmu.speed);\n            if (overlapTime > danmu.time)\n              return true;\n            return false;\n          });\n        });\n        return result && result[0] ? result[0].top : void 0;\n      }\n      // 静止弹幕没有重叠问题\n      case 1:\n      case 2:\n        return void 0;\n    }\n  } else {\n    switch (target.mode) {\n      case 0:\n        topMap.sort((prev, next) => {\n          const nextMinRight = Math.min(...next.map((item) => item.right));\n          const prevMinRight = Math.min(...prev.map((item) => item.right));\n          return nextMinRight * next.length - prevMinRight * prev.length;\n        });\n        break;\n      case 1:\n      case 2:\n        topMap.sort((prev, next) => {\n          const nextMaxWidth = Math.max(...next.map((item) => item.width));\n          const prevMaxWidth = Math.max(...prev.map((item) => item.width));\n          return prevMaxWidth * prev.length - nextMaxWidth * next.length;\n        });\n        break;\n    }\n    return topMap[0][0].top;\n  }\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const fn = fns[data.type];\n  const result = fn(data);\n  globalThis.postMessage({\n    result,\n    id: data.id\n  });\n};\n';
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  sparsity = 30\n  // 10~90\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = sparsity / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1).sort((a, b) => a.top - b.top);\n    if (danmus.length === 0) return marginTop;\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    for (let i = 0; i < danmus.length; i++) {\n      const prevBottom = i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + target.height + verticalGap <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2).sort((a, b) => a.top - b.top);\n    if (danmus.length === 0) return maxTop - target.height;\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    for (let i = danmus.length - 1; i >= 0; i--) {\n      const itemBottom = danmus[i].top + danmus[i].height;\n      if (maxTop - itemBottom >= target.height + verticalGap) {\n        return maxTop - target.height;\n      }\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      return marginTop;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (lastRight + minHorizontalGap <= clientWidth) {\n        return trackTop;\n      }\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n        // 近似使用新弹幕高度\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          return prevBottom;\n        }\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -136,68 +136,43 @@ class Danmuku {
     art.on("resize", this.resize);
     this.load();
   }
-  // 默认配置
   static get option() {
     return {
       danmuku: [],
-      // 弹幕数据
-      speed: 5,
-      // 弹幕持续时间，范围在[1 ~ 10]
+      speed: 20,
       margin: [10, "25%"],
-      // 弹幕上下边距，支持像素数字和百分比
       opacity: 1,
-      // 弹幕透明度，范围在[0 ~ 1]
       color: "#FFFFFF",
-      // 默认弹幕颜色，可以被单独弹幕项覆盖
       mode: 0,
-      // 默认弹幕模式: 0: 滚动，1: 顶部，2: 底部
       modes: [0, 1, 2],
-      // 弹幕可见的模式
       fontSize: 25,
-      // 弹幕字体大小，支持像素数字和百分比
       antiOverlap: true,
-      // 弹幕是否防重叠
       synchronousPlayback: false,
-      // 是否同步播放速度
       mount: void 0,
-      // 弹幕发射器挂载点, 默认为播放器控制栏中部
       heatmap: false,
-      // 是否开启热力图
       width: 512,
-      // 当播放器宽度小于此值时，弹幕发射器置于播放器底部
       points: [],
-      // 热力图数据
       filter: () => true,
-      // 弹幕载入前的过滤器，只支持返回布尔值
       beforeEmit: () => true,
-      // 弹幕发送前的过滤器，支持返回 Promise
       beforeVisible: () => true,
-      // 弹幕显示前的过滤器，支持返回 Promise
       visible: true,
-      // 弹幕层是否可见
       emitter: true,
-      // 是否开启弹幕发射器
       maxLength: 200,
-      // 弹幕输入框最大长度, 范围在[1 ~ 1000]
       lockTime: 5,
-      // 输入框锁定时间，范围在[1 ~ 60]
       theme: "dark",
-      // 弹幕主题，支持 dark 和 light，只在自定义挂载时生效
       OPACITY: {},
-      // 不透明度配置项
       FONT_SIZE: {},
-      // 弹幕字号配置项
       MARGIN: {},
-      // 显示区域配置项
       SPEED: {},
-      // 弹幕速度配置项
-      COLOR: []
-      // 颜色列表配置项
+      COLOR: [],
+      // === 新参数：弹幕密度（屏幕宽度百分比）===
+      sparsity: 30
+      // 默认 30%，范围 10~90
     };
   }
-  // 配置校验
   static get scheme() {
     return {
+      // ... 原有字段保持不变
       danmuku: "array|function|string",
       speed: "number",
       margin: "array",
@@ -224,7 +199,9 @@ class Danmuku {
       FONT_SIZE: "object",
       MARGIN: "object",
       SPEED: "object",
-      COLOR: "array"
+      COLOR: "array",
+      sparsity: "number"
+      // 新增
     };
   }
   // 初始弹幕样式
@@ -338,9 +315,11 @@ class Danmuku {
     });
     return result;
   }
-  // 计算弹幕速度
-  get speed() {
-    return this.option.synchronousPlayback && this.art.playbackRate ? this.option.speed / Number(this.art.playbackRate) : this.option.speed;
+  // 计算弹幕绝对速度 (像素/秒)，基于全屏宽度基准
+  get velocity() {
+    const baseWidth = window.screen ? window.screen.width : 1920;
+    const baseSpeed = this.option.synchronousPlayback && this.art.playbackRate ? this.option.speed / Number(this.art.playbackRate) : this.option.speed;
+    return baseWidth / baseSpeed;
   }
   // 加载弹幕
   async load(danmuku) {
@@ -439,19 +418,17 @@ class Danmuku {
     const changed = Object.keys(option).some(
       (key) => JSON.stringify(this.option[key]) !== JSON.stringify(option[key])
     );
-    if (!changed && !isInit)
-      return this;
+    if (!changed && !isInit) return this;
     this.option = Object.assign({}, Danmuku.option, this.option, option);
     this.validator(this.option, Danmuku.scheme);
     this.option.mode = clamp(this.option.mode, 0, 2);
-    this.option.speed = clamp(this.option.speed, 1, 10);
+    this.option.speed = clamp(this.option.speed, 1, 20);
     this.option.opacity = clamp(this.option.opacity, 0, 1);
     this.option.lockTime = clamp(this.option.lockTime, 1, 60);
     this.option.maxLength = clamp(this.option.maxLength, 1, 1e3);
+    this.option.sparsity = clamp(this.option.sparsity ?? 30, 10, 90);
     this.option.mount = this.option.mount || $controlsCenter;
-    if (option.fontSize) {
-      this.reset();
-    }
+    if (option.fontSize) this.reset();
     if (this.option.visible) {
       this.show();
     } else {
@@ -537,19 +514,20 @@ class Danmuku {
             danmu.$ref.style.backgroundColor = danmu.border ? "rgb(0 0 0 / 50%)" : null;
             setStyles(danmu.$ref, danmu.style);
             danmu.$lastStartTime = Date.now();
-            danmu.$restTime = this.speed;
             const distance = clientWidth + danmu.$ref.clientWidth;
+            danmu.$restTime = distance / this.velocity;
             const { result: top } = await this.postMessage({
               type: "getDanmuTop",
               target: {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
-                speed: distance / danmu.$restTime
+                width: danmu.$ref.clientWidth
+                // 新增：弹幕自身宽度
               },
-              // 当前弹幕信息
               visibles: this.visibles,
-              // 可见的弹幕的数据
               antiOverlap: this.option.antiOverlap,
+              sparsity: this.option.sparsity,
+              // 新参数
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
@@ -563,16 +541,17 @@ class Danmuku {
                 danmu.$ref.dataset.mode = danmu.mode;
                 danmu.$ref.dataset.id = danmu.id || "";
                 switch (danmu.mode) {
-                  // 滚动的弹幕
                   case 0: {
-                    danmu.$ref.style.left = `${clientWidth}px`;
+                    danmu.$ref.style.left = "0px";
                     danmu.$ref.style.marginLeft = "0px";
-                    danmu.$ref.style.transform = `translateX(${-distance}px)`;
+                    danmu.$ref.style.transform = `translateX(${clientWidth}px)`;
+                    danmu.$ref.style.transition = "none";
+                    danmu.$ref.clientWidth;
+                    danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`;
                     danmu.$ref.style.transition = `transform ${danmu.$restTime}s linear 0s`;
                     break;
                   }
                   case 1:
-                  // falls through
                   case 2:
                     danmu.$ref.style.left = "50%";
                     danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`;
@@ -588,48 +567,30 @@ class Danmuku {
           }
         }
       }
-      if (!this.isStop) {
-        this.update();
-      }
+      if (!this.isStop) this.update();
     });
     return this;
   }
   // 重置正在显示的弹幕: stop/emit 状态的弹幕
   resize() {
-    const { clientWidth } = this.$player;
-    this.filter("stop", (danmu) => {
-      switch (danmu.mode) {
-        // 滚动的弹幕
-        case 0:
-          danmu.$ref.style.left = `${clientWidth}px`;
-          break;
+    const fixCenter = (danmu) => {
+      if (danmu.mode === 1 || danmu.mode === 2) {
+        danmu.$ref.style.left = "50%";
+        danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`;
       }
-    });
-    this.filter("emit", (danmu) => {
-      danmu.$lastStartTime = Date.now();
-      switch (danmu.mode) {
-        // 滚动的弹幕
-        case 0: {
-          const distance = clientWidth + danmu.$ref.clientWidth;
-          danmu.$ref.style.left = `${clientWidth}px`;
-          danmu.$ref.style.transform = `translateX(${-distance}px)`;
-          danmu.$ref.style.transition = `transform ${danmu.$restTime}s linear 0s`;
-          break;
-        }
-      }
-    });
+    };
+    this.filter("stop", fixCenter);
+    this.filter("emit", fixCenter);
   }
   // 继续弹幕
   continue() {
-    const { clientWidth } = this.$player;
     this.filter("stop", (danmu) => {
       this.setState(danmu, "emit");
       danmu.$lastStartTime = Date.now();
       switch (danmu.mode) {
         // 继续滚动的弹幕
         case 0: {
-          const distance = clientWidth + danmu.$ref.clientWidth;
-          danmu.$ref.style.transform = `translateX(${-distance}px)`;
+          danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`;
           danmu.$ref.style.transition = `transform ${danmu.$restTime}s linear 0s`;
           break;
         }
@@ -639,14 +600,12 @@ class Danmuku {
   }
   // 暂停弹幕
   suspend() {
-    const { clientWidth } = this.$player;
     this.filter("emit", (danmu) => {
       this.setState(danmu, "stop");
       switch (danmu.mode) {
-        // 停止滚动的弹幕
         case 0: {
-          const translateX = clientWidth - (this.getLeft(danmu.$ref) - this.getLeft(this.$player));
-          danmu.$ref.style.transform = `translateX(${-translateX}px)`;
+          const currentX = this.getLeft(danmu.$ref) - this.getLeft(this.$player);
+          danmu.$ref.style.transform = `translateX(${currentX}px)`;
           danmu.$ref.style.transition = "transform 0s linear 0s";
           break;
         }
@@ -1000,6 +959,11 @@ class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
+                        <div class="apd-config-slider apd-config-sparsity">
+                            弹幕密度
+                            <div class="apd-slider"></div>
+                            <div class="apd-value">未知</div>
+                        </div>
                         <div class="apd-config-slider apd-config-fontSize">
                             弹幕字号
                             <div class="apd-slider"></div>
@@ -1065,22 +1029,81 @@ class Setting {
       ...this.option.FONT_SIZE
     };
   }
+  get SPARSITY() {
+    return {
+      min: 0,
+      max: 8,
+      steps: [
+        {
+          name: "极密",
+          value: 10
+        },
+        {
+          name: "密集",
+          value: 20,
+          hide: true
+        },
+        {
+          name: "密集",
+          value: 30,
+          hide: true
+        },
+        {
+          name: "密集",
+          value: 40,
+          hide: true
+        },
+        {
+          name: "适中",
+          value: 50
+        },
+        {
+          name: "稀疏",
+          value: 60,
+          hide: true
+        },
+        {
+          name: "稀疏",
+          value: 70,
+          hide: true
+        },
+        {
+          name: "稀疏",
+          value: 80,
+          hide: true
+        },
+        {
+          name: "极疏",
+          value: 90
+        }
+      ],
+      ...this.option.SPARSITY
+    };
+  }
   get MARGIN() {
     return {
       min: 0,
-      max: 3,
+      max: 5,
       steps: [
         {
-          name: "1/4",
-          value: [10, "75%"]
+          name: "1/6",
+          value: [10, "83%"]
+        },
+        {
+          name: "1/3",
+          value: [10, "66%"]
         },
         {
           name: "半屏",
           value: [10, "50%"]
         },
         {
-          name: "3/4",
-          value: [10, "25%"]
+          name: "2/3",
+          value: [10, "33%"]
+        },
+        {
+          name: "5/6",
+          value: [10, "16%"]
         },
         {
           name: "满屏",
@@ -1093,29 +1116,49 @@ class Setting {
   get SPEED() {
     return {
       min: 0,
-      max: 4,
+      max: 8,
       steps: [
         {
           name: "极慢",
-          value: 10
+          value: 20
         },
         {
           name: "较慢",
-          value: 7.5,
+          value: 18,
+          hide: true
+        },
+        {
+          name: "较慢",
+          value: 16,
+          hide: true
+        },
+        {
+          name: "较慢",
+          value: 14,
           hide: true
         },
         {
           name: "适中",
-          value: 5
+          value: 12
         },
         {
           name: "较快",
-          value: 2.5,
+          value: 10,
+          hide: true
+        },
+        {
+          name: "较快",
+          value: 8,
+          hide: true
+        },
+        {
+          name: "较快",
+          value: 6,
           hide: true
         },
         {
           name: "极快",
-          value: 1
+          value: 4
         }
       ],
       ...this.option.SPEED
@@ -1323,6 +1366,23 @@ class Setting {
         });
       }
     });
+    this.slider.sparsity = this.createSlider({
+      ...this.SPARSITY,
+      container: this.query(".apd-config-sparsity .apd-slider"),
+      // 或 this.template.$sparsitySlider
+      findIndex: () => {
+        return this.SPARSITY.steps.findIndex((item) => item.value === this.option.sparsity);
+      },
+      onChange: (index) => {
+        const step = this.SPARSITY.steps[index];
+        if (!step) return;
+        const valueEl = this.query(".apd-config-sparsity .apd-value");
+        if (valueEl) valueEl.textContent = step.name;
+        this.danmuku.config({
+          sparsity: step.value
+        });
+      }
+    });
   }
   createSlider({ min, max, container, findIndex, onChange, steps = [] }) {
     const { query, clamp, setStyle } = this.utils;
@@ -1492,6 +1552,7 @@ class Setting {
     this.slider.margin.reset();
     this.slider.fontSize.reset();
     this.slider.speed.reset();
+    if (this.slider.sparsity) this.slider.sparsity.reset();
     this.setData("danmukuVisible", this.option.visible);
     this.setData("danmukuMode", this.option.mode);
     this.setData("danmukuColor", this.option.color);

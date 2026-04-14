@@ -88,6 +88,7 @@ export default class Danmuku {
   // 配置校验
   static get scheme() {
     return {
+      // ... 原有字段保持不变
       danmuku: 'array|function|string',
       speed: 'number',
       margin: 'array',
@@ -115,9 +116,8 @@ export default class Danmuku {
       MARGIN: 'object',
       SPEED: 'object',
       COLOR: 'array',
-      density: 'number',
-      maxCount: 'number',
-      minVerticalGap: 'number',
+
+      sparsity: 'number',   // 新增
     }
   }
 
@@ -418,21 +418,16 @@ export default class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
-    this.option.density = this.utils.clamp(this.option.density ?? 1, 0, 2);
-    this.option.maxCount = this.utils.clamp(this.option.maxCount ?? 20, 5, 100);
-    this.option.minVerticalGap = this.utils.clamp(this.option.minVerticalGap ?? 12, 4, 40);
+    this.option.sparsity = clamp(this.option.sparsity ?? 30, 10, 90)   // 新增限制
+
     this.option.mount = this.option.mount || $controlsCenter
 
-    // 动态配置有字体大小，需要重新渲染
-    if (option.fontSize) {
-      this.reset()
-    }
+    if (option.fontSize) this.reset()
 
     // 通过配置项控制弹幕的显示和隐藏
     if (this.option.visible) {
       this.show()
-    }
-    else {
+    } else {
       this.hide()
     }
 
@@ -508,78 +503,54 @@ export default class Danmuku {
 
     this.timer = window.requestAnimationFrame(async () => {
       if (this.art.playing && !this.isHide) {
-        // 实时计算弹幕的剩余显示时间
+        // 更新剩余时间 + 回收过期
         this.filter('emit', (danmu) => {
           const emitTime = (Date.now() - danmu.$lastStartTime) / 1000
           danmu.$restTime -= emitTime
           danmu.$lastStartTime = Date.now()
-          // 超过时间即重置弹幕
           if (danmu.$restTime <= 0) {
             this.makeWait(danmu)
           }
         })
 
-        // 获取准备好发送的弹幕，可能包含ready和wait状态的弹幕
         const readys = this.readys
 
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index]
 
-          // === 新增：maxCount 硬限制 ===
-          if (this.states.emit.length >= this.option.maxCount) {
-            // 彻底丢弃这条弹幕，避免时间滞后
-            if (danmu.$ref) {
-                this.$refs.push(danmu.$ref);   // 回收 DOM 到池子（重要！）
-                danmu.$ref = null;
-            }
-
-            // 从 wait / ready 队列中彻底移除（防止残留）
-            this.states.wait = this.states.wait.filter(d => d !== danmu);
-            this.states.ready = this.states.ready.filter(d => d !== danmu);
-            continue;
-          }
-
-          // 弹幕发送前的过滤器
           const state = await this.option.beforeVisible(danmu)
 
           if (state) {
             const { clientWidth, clientHeight } = this.$player
-            danmu.$ref = this.$ref // 获取弹幕DOM节点
-            danmu.$ref.textContent = danmu.text // 设置弹幕文本
+            danmu.$ref = this.$ref
+            danmu.$ref.textContent = danmu.text
 
-            // 提前添加到弹幕层中，用于计算top值
             this.$danmuku.appendChild(danmu.$ref)
 
-            // 设置初始弹幕样式
             danmu.$ref.style.opacity = this.option.opacity
             danmu.$ref.style.fontSize = `${this.fontSize}px`
             danmu.$ref.style.color = danmu.color
             danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null
             danmu.$ref.style.backgroundColor = danmu.border ? 'rgb(0 0 0 / 50%)' : null
 
-            // 设置单独弹幕样式
             setStyles(danmu.$ref, danmu.style)
 
-            // 记录弹幕时间戳
             danmu.$lastStartTime = Date.now()
 
-            // 利用恒定速度计算该弹幕所需的实际时间
             const distance = clientWidth + danmu.$ref.clientWidth
             danmu.$restTime = distance / this.velocity
 
-            // 计算弹幕的top值
+            // === 关键修改：传 sparsity 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
               type: 'getDanmuTop',
               target: {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
-                speed: this.velocity, // 直接传入绝对速度给防重叠运算
-              }, // 当前弹幕信息
-              visibles: this.visibles, // 可见的弹幕的数据
+                width: danmu.$ref.clientWidth,   // 新增：弹幕自身宽度
+              },
+              visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
-              density: this.option.density,           // 新增
-              minVerticalGap: this.option.minVerticalGap, // 新增
-              maxCount: this.option.maxCount,         // 可选传过去，Worker 里也可参考
+              sparsity: this.option.sparsity,     // 新参数
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
@@ -588,46 +559,33 @@ export default class Danmuku {
 
             if (danmu.$ref) {
               if (!this.isStop && top !== undefined) {
-                this.setState(danmu, 'emit') // 转换为emit状态
+                this.setState(danmu, 'emit')
                 danmu.$ref.style.top = `${top}px`
                 danmu.$ref.style.visibility = 'visible'
-                danmu.$ref.dataset.mode = danmu.mode // CSS控制模式的显示和隐藏
-                danmu.$ref.dataset.id = danmu.id || '' // 用于悬停的唯一标识
+                danmu.$ref.dataset.mode = danmu.mode
+                danmu.$ref.dataset.id = danmu.id || ''
 
                 switch (danmu.mode) {
-                  // 滚动的弹幕
                   case 0: {
-                    // 严格以左边缘（left=0）为坐标系绝对锚点，不再动态绑定 clientWidth
                     danmu.$ref.style.left = '0px'
                     danmu.$ref.style.marginLeft = '0px'
-
-                    // 初始化到播放器最右侧外边
                     danmu.$ref.style.transform = `translateX(${clientWidth}px)`
                     danmu.$ref.style.transition = 'none'
-
-                    // 强制回流以让初始位置立即生效
                     // eslint-disable-next-line no-unused-expressions
                     danmu.$ref.clientWidth
-
-                    // 过渡到左侧外边
                     danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`
                     danmu.$ref.style.transition = `transform ${danmu.$restTime}s linear 0s`
                     break
                   }
                   case 1:
-                    // falls through
                   case 2:
                     danmu.$ref.style.left = '50%'
                     danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
                     break
-                  default:
-                    break
                 }
 
                 this.art.emit('artplayerPluginDanmuku:visible', danmu)
-              }
-              else {
-                // 假如弹幕已经停止或者没有 top 值，则重置弹幕为ready状态，回收弹幕DOM节点，等待下次发送
+              } else {
                 this.setState(danmu, 'ready')
                 this.$refs.push(danmu.$ref)
                 danmu.$ref = null

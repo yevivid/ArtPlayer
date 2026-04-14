@@ -51,7 +51,6 @@ export default class Setting {
       margin: null,
       fontSize: null,
       speed: null,
-      maxCount: null,
     }
 
     this.emitting = false
@@ -155,10 +154,10 @@ export default class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
-                        <div class="apd-config-slider apd-config-maxCount">
-                            同屏上限
+                        <div class="apd-config-slider apd-config-sparsity">
+                            弹幕密度
                             <div class="apd-slider"></div>
-                            <div class="apd-value">150</div>
+                            <div class="apd-value">未知</div>
                         </div>
                         <div class="apd-config-slider apd-config-fontSize">
                             弹幕字号
@@ -228,6 +227,57 @@ export default class Setting {
     }
   }
 
+  get SPARSITY() {
+    return {
+      min: 0,
+      max: 8,
+      steps: [
+        {
+          name: "极密",
+          value: 10
+        },
+        {
+          name: "密集",
+          value: 20,
+          hide: true
+        },
+        {
+          name: "密集",
+          value: 30,
+          hide: true
+        },
+        {
+          name: "密集",
+          value: 40,
+          hide: true
+        },
+        {
+          name: "适中",
+          value: 50,
+        },
+        {
+          name: "稀疏",
+          value: 60,
+          hide: true
+        },
+        {
+          name: "稀疏",
+          value: 70,
+          hide: true
+        },
+        {
+          name: "稀疏",
+          value: 80,
+          hide: true
+        },
+        {
+          name: "极疏",
+          value: 90
+        }
+      ],
+      ...this.option.SPARSITY
+    };
+  }
 
   get MARGIN() {
     return {
@@ -385,8 +435,6 @@ export default class Setting {
     this.template.$fontSizeValue = this.query('.apd-config-fontSize .apd-value')
     this.template.$speedSlider = this.query('.apd-config-speed .apd-slider')
     this.template.$speedValue = this.query('.apd-config-speed .apd-value')
-    this.template.$maxCountSlider = this.query('.apd-config-maxCount .apd-slider')
-    this.template.$maxCountValue = this.query('.apd-config-maxCount .apd-value')
     this.template.$input = this.query('.apd-input')
     this.template.$send = this.query('.apd-send')
 
@@ -545,20 +593,20 @@ export default class Setting {
       },
     })
 
-    this.slider.maxCount = this.createSlider({
-      min: 5,
-      max: 100,
-      steps: [],                    // 不使用 steps，用连续滑动
-      container: this.template.$maxCountSlider,
+    // 弹幕密度
+    this.slider.sparsity = this.createSlider({
+      ...this.SPARSITY,
+      container: this.query('.apd-config-sparsity .apd-slider'),   // 或 this.template.$sparsitySlider
       findIndex: () => {
-        return this.option.maxCount || 150
+        return this.SPARSITY.steps.findIndex(item => item.value === this.option.sparsity)
       },
-      onChange: (value) => {
-        const { $maxCountValue } = this.template
-        $maxCountValue.textContent = `${value} 条`
-
+      onChange: (index) => {
+        const step = this.SPARSITY.steps[index]
+        if (!step) return
+        const valueEl = this.query('.apd-config-sparsity .apd-value')
+        if (valueEl) valueEl.textContent = step.name
         this.danmuku.config({
-          maxCount: value
+          sparsity: step.value
         })
       },
     })
@@ -770,7 +818,7 @@ export default class Setting {
     this.slider.margin.reset()
     this.slider.fontSize.reset()
     this.slider.speed.reset()
-    this.slider.maxCount.reset()
+    if (this.slider.sparsity) this.slider.sparsity.reset()
 
     this.setData('danmukuVisible', this.option.visible)
     this.setData('danmukuMode', this.option.mode)
