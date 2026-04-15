@@ -231,49 +231,29 @@ export default class Setting {
   get DENSITY() {
     return {
       min: 0,
-      max: 8,
+      max: 4,
       steps: [
         {
           name: "极密",
-          value: 10
+          value: 5
         },
         {
           name: "密集",
-          value: 20,
-          hide: true
-        },
-        {
-          name: "密集",
-          value: 30,
-          hide: true
-        },
-        {
-          name: "密集",
-          value: 40,
+          value: 25,
           hide: true
         },
         {
           name: "适中",
-          value: 50,
+          value: 65,
         },
         {
-          name: "稀疏",
-          value: 60,
-          hide: true
-        },
-        {
-          name: "稀疏",
-          value: 70,
-          hide: true
-        },
-        {
-          name: "稀疏",
-          value: 80,
+          name: "密集",
+          value: 45,
           hide: true
         },
         {
           name: "极疏",
-          value: 90
+          value: 85,
         }
       ],
       ...this.option.DENSITY
@@ -283,7 +263,7 @@ export default class Setting {
   get MARGIN() {
     return {
       min: 0,
-      max: 5,
+      max: 4,
       steps: [
         {
           name: "1/6",
@@ -291,7 +271,8 @@ export default class Setting {
         },
         {
           name: "1/3",
-          value: [10, "66%"]
+          value: [10, "66%"],
+          hide: true
         },
         {
           name: "半屏",
@@ -299,15 +280,12 @@ export default class Setting {
         },
         {
           name: "2/3",
-          value: [10, "33%"]
-        },
-        {
-          name: "5/6",
-          value: [10, "16%"]
+          value: [10, "33%"],
+          hide: true
         },
         {
           name: "满屏",
-          value: [10, 10]
+          value: [10, "16%"]
         }
       ],
       ...this.option.MARGIN
@@ -541,23 +519,25 @@ export default class Setting {
 
     this.slider.margin = this.createSlider({
       ...this.MARGIN,
-      container: this.template.$marginSlider,
+      container: this.template.$marginSlider,        // 确保这个在 createTemplate() 中已正确 query
       findIndex: () => {
-        return this.MARGIN.steps.findIndex(
-          item => item.value[0] === this.option.margin[0] && item.value[1] === this.option.margin[1],
-        )
+        // 精确匹配当前 margin 配置，返回对应 steps 索引
+        return this.MARGIN.steps.findIndex(item =>
+          JSON.stringify(item.value) === JSON.stringify(this.option.margin)
+        );
       },
       onChange: (index) => {
-        const margin = this.MARGIN.steps[index]
-        if (!margin)
-          return
-        const { $marginValue } = this.template
-        $marginValue.textContent = margin.name
+        const marginStep = this.MARGIN.steps[index];
+        if (!marginStep) return;
+
+        const { $marginValue } = this.template;
+        if ($marginValue) $marginValue.textContent = marginStep.name;
+
         this.danmuku.config({
-          margin: margin.value,
-        })
+          margin: marginStep.value   // 必须是数组 [10, "50%"] 或 [10, 10]
+        });
       },
-    })
+    });
 
     this.slider.fontSize = this.createSlider({
       ...this.FONT_SIZE,
