@@ -12,77 +12,121 @@ function getDanmuTop({
   const minGapRatio = density / 100   // 0.1 ~ 0.9
   const minHorizontalGap = Math.max(20, clientWidth * minGapRatio)  // 至少20px保护
 
-  // ====================== 固定模式（mode 1 & 2）保持上版逻辑 ======================
+  // ====================== 固定模式 1 (顶部) ======================
   if (target.mode === 1) {
-    let danmus = visibles.filter(item => item.mode === 1).sort((a, b) => a.top - b.top)
-    if (danmus.length === 0) return marginTop
+    // 【修改】：提前过滤掉因为修改 margin 而被挤出合法区域的历史旧弹幕
+    let danmus = visibles
+        .filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop)
+        .sort((a, b) => a.top - b.top)
 
-    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))  // density越大间距越大
+    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))
 
-    for (let i = 0; i < danmus.length; i++) {
-      const prevBottom = i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height
+    if (danmus.length === 0) {
+        if (marginTop + target.height <= maxTop) return marginTop
+        return undefined
+    }
+
+    if (danmus[0].top - marginTop >= target.height + verticalGap) {
+        return marginTop
+    }
+
+    for (let i = 1; i < danmus.length; i++) {
+      const prevBottom = danmus[i - 1].top + danmus[i - 1].height
       if (danmus[i].top - prevBottom >= target.height + verticalGap) {
-        return prevBottom
+        if (prevBottom + target.height <= maxTop) return prevBottom
       }
     }
 
     const last = danmus[danmus.length - 1]
-    if (last.top + last.height + target.height + verticalGap <= maxTop) {
+    if (last.top + last.height + verticalGap + target.height <= maxTop) {
       return last.top + last.height + verticalGap
     }
     return undefined
   }
 
+  // ====================== 固定模式 2 (底部) ======================
   if (target.mode === 2) {
-    let danmus = visibles.filter(item => item.mode === 2).sort((a, b) => a.top - b.top)
-    if (danmus.length === 0) return maxTop - target.height
+    // 【修改】：提前过滤越界弹幕
+    let danmus = visibles
+        .filter(item => item.mode === 2 && item.top < maxTop && (item.top + item.height) > marginTop)
+        .sort((a, b) => a.top - b.top) // 从上到下排序
 
     const verticalGap = Math.round(target.height * (0.8 + minGapRatio))
 
-    for (let i = danmus.length - 1; i >= 0; i--) {
-      const itemBottom = danmus[i].top + danmus[i].height
-      if (maxTop - itemBottom >= target.height + verticalGap) {
-        return maxTop - target.height
-      }
+    if (danmus.length === 0) {
+        if (maxTop - target.height >= marginTop) return maxTop - target.height
+        return undefined
     }
+
+    // 优先排在最底下
+    const last = danmus[danmus.length - 1]
+    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {
+       return maxTop - target.height
+    }
+
+    // 检查中间的空隙 (从下往上遍历，确保底部堆叠紧密)
+    for (let i = danmus.length - 1; i > 0; i--) {
+       const currentTop = danmus[i].top
+       const prevBottom = danmus[i - 1].top + danmus[i - 1].height
+       if (currentTop - prevBottom >= target.height + verticalGap) {
+           const expectedTop = currentTop - verticalGap - target.height
+           // 严格护栏：不能顶破天花板
+           if (expectedTop >= marginTop) return expectedTop
+       }
+    }
+
+    // 实在不行，排在最顶层那条的上方
+    const first = danmus[0]
+    const expectedTop = first.top - verticalGap - target.height
+    if (expectedTop >= marginTop) {
+       return expectedTop
+    }
+
     return undefined
   }
 
-  // ====================== 滚动模式（mode 0）—— 改进版轨道管理 ======================
+  // ====================== 滚动模式 0 (从右向左) ======================
   if (target.mode === 0) {
     const rolling = visibles.filter(item => item.mode === 0)
 
     if (rolling.length === 0) {
-      return marginTop
+      if (marginTop + target.height <= maxTop) return marginTop
+      return undefined
     }
 
-    // 按 top 分组构建轨道信息：每个轨道记录最后一条弹幕的 rightEdge（右边缘位置）
-    const tracks = new Map()  // top -> lastRightEdge
-
+    // 收集所有现有轨道
+    const tracks = new Map()
     rolling.forEach(d => {
       const rightEdge = d.left + d.width
-      const currentTop = Math.round(d.top)   // 四舍五入避免浮点误差
+      const currentTop = Math.round(d.top)
       if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {
         tracks.set(currentTop, rightEdge)
       }
     })
 
-    // 1. 优先尝试复用已有轨道（同一 top）
+    // 1. 优先尝试复用已有轨道
     for (let [trackTop, lastRight] of tracks.entries()) {
-      // 如果最后一条的右边缘 + 最小间隔 <= 当前屏幕右边，说明轨道已空闲足够距离
-      if (lastRight + minHorizontalGap <= clientWidth) {
-        return trackTop   // 复用该轨道
+      // 【核心护栏 1】：这条轨道必须在*当前*的合法区域内，如果是历史弹幕的越界轨道，直接无视它！
+      if (trackTop >= marginTop && (trackTop + target.height) <= maxTop) {
+        if (lastRight + minHorizontalGap <= clientWidth) {
+          return trackTop
+        }
       }
     }
 
-    // 2. 没有可用轨道 → 尝试在垂直方向开辟新轨道（使用 antiOverlap 逻辑）
+    // 2. 尝试在垂直方向开辟新轨道
     if (antiOverlap && rolling.length > 0) {
-      let sortedTracks = Array.from(tracks.keys()).sort((a, b) => a - b)
+      // 【核心护栏 2】：把已经越界的老轨道踢出计算群组，它们不参与新空隙的分割计算
+      let sortedTracks = Array.from(tracks.keys())
+         .filter(top => top >= marginTop && top < maxTop)
+         .sort((a, b) => a - b)
+
       let virtualDanmus = sortedTracks.map(top => ({
         top: top,
-        height: target.height   // 近似使用新弹幕高度
+        height: target.height
       }))
 
+      // 头尾塞入虚拟墙壁
       virtualDanmus.unshift({ top: 0, height: marginTop })
       virtualDanmus.push({ top: maxTop, height: marginBottom })
 
@@ -92,13 +136,15 @@ function getDanmuTop({
         const prevBottom = prev.top + prev.height
         const diff = curr.top - prevBottom
 
-        if (diff >= target.height + 18) {   // 垂直最小安全间距，可微调
-          return prevBottom
+        if (diff >= target.height + 18) {
+          // 【核心护栏 3】：确认算出来的位置，哪怕加上自身高度，也不会超过最底线
+          if (prevBottom + target.height <= maxTop) {
+            return prevBottom
+          }
         }
       }
     }
 
-    // 3. 实在没有位置，暂不显示，等待下一帧再尝试
     return undefined
   }
 
