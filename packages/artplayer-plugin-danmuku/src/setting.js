@@ -238,7 +238,7 @@ export default class Setting {
           value: 5
         },
         {
-          name: "密集",
+          name: "较密",
           value: 25,
           hide: true
         },
@@ -247,7 +247,7 @@ export default class Setting {
           value: 65,
         },
         {
-          name: "密集",
+          name: "较稀",
           value: 45,
           hide: true
         },
@@ -266,11 +266,11 @@ export default class Setting {
       max: 4,
       steps: [
         {
-          name: "1/6",
+          name: "极少",
           value: [10, "83%"]
         },
         {
-          name: "1/3",
+          name: "较少",
           value: [10, "66%"],
           hide: true
         },
@@ -279,7 +279,7 @@ export default class Setting {
           value: [10, "50%"]
         },
         {
-          name: "2/3",
+          name: "较多",
           value: [10, "33%"],
           hide: true
         },
@@ -295,49 +295,29 @@ export default class Setting {
   get SPEED() {
     return {
     min: 0,
-    max: 8,
+    max: 4,
     steps: [
         {
-        name: "极慢",
-        value: 20
+          name: "极慢",
+          value: 22
         },
         {
-        name: "较慢",
-        value: 18,
-        hide: true
+          name: "较慢",
+          value: 18,
+          hide: true
         },
         {
-        name: "较慢",
-        value: 16,
-        hide: true
+          name: "适中",
+          value: 14,
         },
         {
-        name: "较慢",
-        value: 14,
-        hide: true
+          name: "较快",
+          value: 10,
+          hide: true
         },
         {
-        name: "适中",
-        value: 12,
-        },
-        {
-        name: "较快",
-        value: 10,
-        hide: true
-        },
-        {
-        name: "较快",
-        value: 8,
-        hide: true
-        },
-        {
-        name: "较快",
-        value: 6,
-        hide: true
-        },
-        {
-        name: "极快",
-        value: 4,
+          name: "极快",
+          value: 6
         },
     ],
     ...this.option.SPEED
