@@ -214,7 +214,7 @@ export default class Danmuku {
     const result = []
 
     // 有的是ready状态：之前因为弹幕太多而暂停发送的弹幕
-    this.filter('ready', danmu => result.push(danmu))
+    // this.filter('ready', danmu => result.push(danmu))
 
     // 有的是wait状态：符合时间范围的弹幕
     this.filter('wait', (danmu) => {
