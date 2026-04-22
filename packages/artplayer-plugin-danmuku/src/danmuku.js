@@ -537,6 +537,10 @@ export default class Danmuku {
 
             const distance = clientWidth + danmu.$ref.clientWidth
             danmu.$restTime = distance / this.velocity
+            if (danmu.mode == 1 || danmu.mode == 2)
+            {
+                danmu.$restTime = danmu.$restTime / 2
+            }
 
             // === 关键修改：传 density 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
