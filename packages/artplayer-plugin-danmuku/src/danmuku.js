@@ -635,6 +635,15 @@ export default class Danmuku {
               danmu.$restTime = danmu.$restTime / 2
             }
 
+            // 速度抖动：10% 快、10% 慢、80% 正常
+            const jitter = Math.random()
+            if (jitter < 0.1) {
+              danmu.$restTime *= 0.8
+            }
+            else if (jitter > 0.9) {
+              danmu.$restTime *= 1.2
+            }
+
             // === 关键修改：传 density 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
               type: 'getDanmuTop',

@@ -343,7 +343,7 @@ function createPreprocessor(options = {}) {
     return result;
   };
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop) return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop) return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop) return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          return trackTop;\n        }\n      }\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            return prevBottom;\n          }\n        }\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop) return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop) return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop) return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -894,6 +894,12 @@ class Danmuku {
             if (danmu.mode === 1 || danmu.mode === 2) {
               danmu.$restTime = danmu.$restTime / 2;
             }
+            const jitter = Math.random();
+            if (jitter < 0.1) {
+              danmu.$restTime *= 0.8;
+            } else if (jitter > 0.9) {
+              danmu.$restTime *= 1.2;
+            }
             const { result: top } = await this.postMessage({
               type: "getDanmuTop",
               target: {
@@ -1077,6 +1083,24 @@ function line(pointA, pointB) {
     angle: Math.atan2(lengthY, lengthX)
   };
 }
+function computeDensity(queue, svgWidth, duration, sampling) {
+  const gap = duration / svgWidth;
+  const sorted = [...queue].sort((a, b) => (a.time || 0) - (b.time || 0));
+  const points = [];
+  let head = 0;
+  for (let x = 0; x <= svgWidth; x += sampling) {
+    const tStart = x * gap;
+    const tEnd = (x + sampling) * gap;
+    while (head < sorted.length && sorted[head].time <= tStart) head++;
+    let count = 0;
+    for (let i = head; i < sorted.length; i++) {
+      if (sorted[i].time > tEnd) break;
+      count++;
+    }
+    points.push([x, count]);
+  }
+  return points;
+}
 function heatmap(art, danmuku, option) {
   const { query } = art.constructor.utils;
   art.controls.add({
@@ -1124,13 +1148,7 @@ function heatmap(art, danmuku, option) {
         if (Array.isArray(arg) && arg.length) {
           points = [...arg];
         } else {
-          const gap = art.duration / svg.w;
-          for (let x = 0; x <= svg.w; x += options.sampling) {
-            const y = danmuku.queue.filter(
-              ({ time }) => time > x * gap && time <= (x + options.sampling) * gap
-            ).length;
-            points.push([x, y]);
-          }
+          points = computeDensity(danmuku.queue, svg.w, art.duration, options.sampling);
         }
         if (points.length === 0)
           return;
@@ -1140,9 +1158,13 @@ function heatmap(art, danmuku, option) {
         if (lastX !== svg.w) {
           points.push([svg.w, lastY]);
         }
-        const yPoints = points.map((point) => point[1]);
-        const yMin = Math.min(...yPoints);
-        const yMax = Math.max(...yPoints);
+        let yMin = Infinity;
+        let yMax = -Infinity;
+        for (let i = 0; i < points.length; i++) {
+          const val = points[i][1];
+          if (val < yMin) yMin = val;
+          if (val > yMax) yMax = val;
+        }
         const yMid = (yMin + yMax) / 2;
         for (let i = 0; i < points.length; i++) {
           const point = points[i];

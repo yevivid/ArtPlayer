@@ -24,6 +24,31 @@ function line(pointA, pointB) {
   }
 }
 
+// 滑动窗口统计弹幕密度，O(n+m) 替代 O(n*m)
+function computeDensity(queue, svgWidth, duration, sampling) {
+  const gap = duration / svgWidth
+  const sorted = [...queue].sort((a, b) => (a.time || 0) - (b.time || 0))
+  const points = []
+
+  let head = 0
+  for (let x = 0; x <= svgWidth; x += sampling) {
+    const tStart = x * gap
+    const tEnd = (x + sampling) * gap
+
+    while (head < sorted.length && sorted[head].time <= tStart) head++
+
+    let count = 0
+    for (let i = head; i < sorted.length; i++) {
+      if (sorted[i].time > tEnd) break
+      count++
+    }
+
+    points.push([x, count])
+  }
+
+  return points
+}
+
 export default function heatmap(art, danmuku, option) {
   const { query } = art.constructor.utils
 
@@ -80,13 +105,7 @@ export default function heatmap(art, danmuku, option) {
           points = [...arg]
         }
         else {
-          const gap = art.duration / svg.w
-          for (let x = 0; x <= svg.w; x += options.sampling) {
-            const y = danmuku.queue.filter(
-              ({ time }) => time > x * gap && time <= (x + options.sampling) * gap,
-            ).length
-            points.push([x, y])
-          }
+          points = computeDensity(danmuku.queue, svg.w, art.duration, options.sampling)
         }
 
         if (points.length === 0)
@@ -99,9 +118,14 @@ export default function heatmap(art, danmuku, option) {
           points.push([svg.w, lastY])
         }
 
-        const yPoints = points.map(point => point[1])
-        const yMin = Math.min(...yPoints)
-        const yMax = Math.max(...yPoints)
+        // 用循环替代 Math.min/max(...spread) 避免栈溢出
+        let yMin = Infinity
+        let yMax = -Infinity
+        for (let i = 0; i < points.length; i++) {
+          const val = points[i][1]
+          if (val < yMin) yMin = val
+          if (val > yMax) yMax = val
+        }
         const yMid = (yMin + yMax) / 2
 
         for (let i = 0; i < points.length; i++) {

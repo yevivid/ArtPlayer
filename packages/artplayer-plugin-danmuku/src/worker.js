@@ -104,19 +104,21 @@ function getDanmuTop({
       }
     })
 
-    // 1. 优先尝试复用已有轨道
+    // 1. 收集所有可用的已有轨道，随机选一条
+    const availableTracks = []
     for (let [trackTop, lastRight] of tracks.entries()) {
-      // 【核心护栏 1】：这条轨道必须在*当前*的合法区域内，如果是历史弹幕的越界轨道，直接无视它！
       if (trackTop >= marginTop && (trackTop + target.height) <= maxTop) {
         if (lastRight + minHorizontalGap <= clientWidth) {
-          return trackTop
+          availableTracks.push(trackTop)
         }
       }
     }
+    if (availableTracks.length > 0) {
+      return availableTracks[Math.floor(Math.random() * availableTracks.length)]
+    }
 
-    // 2. 尝试在垂直方向开辟新轨道
+    // 2. 收集所有可用的新轨道空隙，随机选一个
     if (antiOverlap && rolling.length > 0) {
-      // 【核心护栏 2】：把已经越界的老轨道踢出计算群组，它们不参与新空隙的分割计算
       let sortedTracks = Array.from(tracks.keys())
          .filter(top => top >= marginTop && top < maxTop)
          .sort((a, b) => a - b)
@@ -126,10 +128,10 @@ function getDanmuTop({
         height: target.height
       }))
 
-      // 头尾塞入虚拟墙壁
       virtualDanmus.unshift({ top: 0, height: marginTop })
       virtualDanmus.push({ top: maxTop, height: marginBottom })
 
+      const availableGaps = []
       for (let i = 1; i < virtualDanmus.length; i++) {
         const prev = virtualDanmus[i - 1]
         const curr = virtualDanmus[i]
@@ -137,11 +139,13 @@ function getDanmuTop({
         const diff = curr.top - prevBottom
 
         if (diff >= target.height + 18) {
-          // 【核心护栏 3】：确认算出来的位置，哪怕加上自身高度，也不会超过最底线
           if (prevBottom + target.height <= maxTop) {
-            return prevBottom
+            availableGaps.push(prevBottom)
           }
         }
+      }
+      if (availableGaps.length > 0) {
+        return availableGaps[Math.floor(Math.random() * availableGaps.length)]
       }
     }
 
