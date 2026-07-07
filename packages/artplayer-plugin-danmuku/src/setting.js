@@ -61,6 +61,7 @@ export default class Setting {
     this.createTemplate()
     this.createSliders()
     this.createEvents()
+    this.applyHighlight()
 
     this.mount(this.option.mount)
 
@@ -481,6 +482,19 @@ export default class Setting {
     })
   }
 
+  applyHighlight() {
+    const { $danmuku } = this.template
+    if (!$danmuku) return
+    if (!this.option.highlight) return
+    $danmuku.style.setProperty('--apd-highlight', this.option.highlight)
+    $danmuku.querySelectorAll('path').forEach(path => {
+      const fill = path.getAttribute('fill')
+      if (fill && fill.toLowerCase() !== '#ffffff' && fill.toLowerCase() !== '#fff') {
+        path.setAttribute('fill', this.option.highlight)
+      }
+    })
+  }
+
   createSliders() {
     this.slider.opacity = this.createSlider({
       ...this.OPACITY,
@@ -799,6 +813,8 @@ export default class Setting {
     $color && inverseClass($color, 'apd-active')
 
     tooltip($toggle, this.option.visible ? '关闭弹幕' : '打开弹幕')
+
+    this.applyHighlight()
 
     this.resize()
   }

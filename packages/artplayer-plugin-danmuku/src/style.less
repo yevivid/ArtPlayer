@@ -1,4 +1,4 @@
-@highlight: #00a1d6;
+@highlight: var(--apd-highlight, #00a1d6);
 
 .artplayer-plugin-danmuku {
   display: flex;
@@ -14,15 +14,13 @@
   flex-shrink: 0;
   gap: 10px;
 
+  // 第 17-26 行，把 fill 改成 color
   .apd-icon {
-    cursor: pointer;
-    opacity: 0.75;
-    transition: all 0.2s ease;
-    fill: #fff;
-
-    &:hover {
-      opacity: 1;
-    }
+      cursor: pointer;
+      opacity: 0.75;
+      transition: all 0.2s ease;
+      color: #fff;  // 改这里
+      &:hover { opacity: 1; }
   }
 
   .apd-config {
@@ -339,7 +337,7 @@
 
 [data-danmuku-theme='light'] > .artplayer-plugin-danmuku {
   .apd-icon {
-    fill: #333;
+    color: #333;
   }
 
   .apd-emitter {
@@ -460,9 +458,6 @@
     .apd-style-mode {
       [data-mode='@{index}'] {
         color: @highlight;
-        path {
-          fill: @highlight;
-        }
       }
     }
   }

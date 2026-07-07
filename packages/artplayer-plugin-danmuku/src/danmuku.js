@@ -98,6 +98,7 @@ export default class Danmuku {
       mergeThreshold: 30, // 合并时间窗口（秒），范围在 [5 ~ 120]
       mergeMaxDist: 5, // 合并最大编辑距离，范围在 [1 ~ 20]
       mergeMaxCosine: 45, // 合并最大余弦相似度，范围在 [0 ~ 100]
+      highlight: '', // UI 高亮色（圆点、进度条、发送按钮等），为空则使用默认蓝色
       mergeWasmUrl: '', // WASM 文件地址，开启合并时必填
       preprocess: true, // 是否开启文本预处理（全角转半角、去标点等）
     }
@@ -139,6 +140,7 @@ export default class Danmuku {
       mergeThreshold: 'number',
       mergeMaxDist: 'number',
       mergeMaxCosine: 'number',
+      highlight: 'string',
       mergeWasmUrl: 'string',
       preprocess: 'boolean',
     }

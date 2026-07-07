@@ -118,7 +118,6 @@ export default function heatmap(art, danmuku, option) {
           points.push([svg.w, lastY])
         }
 
-        // 用循环替代 Math.min/max(...spread) 避免栈溢出
         let yMin = Infinity
         let yMax = -Infinity
         for (let i = 0; i < points.length; i++) {
@@ -147,10 +146,10 @@ export default function heatmap(art, danmuku, option) {
         }
 
         const bezierCommand = (point, i, a) => {
-          const cps = controlPoint(a[i - 1], a[i - 2], point)
-          const cpe = controlPoint(point, a[i - 1], a[i + 1], true)
-          const close = i === a.length - 1 ? ' z' : ''
-          return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}${close}`
+            const cps = controlPoint(a[i - 1], a[i - 2], point)
+            const cpe = controlPoint(point, a[i - 1], a[i + 1], true)
+            // const close = i === a.length - 1 ? ' z' : ''  <-- 这行删掉
+            return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}` // <-- 移除 ${close}
         }
 
         const pointsPositions = points.map((e) => {
@@ -160,26 +159,30 @@ export default function heatmap(art, danmuku, option) {
         })
 
         const pathD = pointsPositions.reduce(
-          (acc, e, i, a) =>
+        (acc, e, i, a) =>
             i === 0
-              ? `M ${a[a.length - 1][0]},${svg.h} L ${e[0]},${svg.h} L ${e[0]},${e[1]}`
-              : `${acc} ${bezierCommand(e, i, a)}`,
-          '',
-        )
+            ? `M ${a[a.length - 1][0]},${svg.h} L ${e[0]},${svg.h} L ${e[0]},${e[1]}`
+            : `${acc} ${bezierCommand(e, i, a)}`,
+        '',
+        ) + ` L ${svg.w},${svg.h} z`;
 
+        // 核心修改点：
+        // 1. 彻底移除内部多余带 top: -100px 的 div 包裹层，直接把 SVG 塞进容器，避免双重 top 错位！
+        // 2. preserveAspectRatio="none" 确保 SVG 撑满容器，让热力图完美“往下贴死进度条”。
+        // 3. 在 SVG 标签上增加 opacity 样式，控制整个热力图图层半透明。
         $heatmap.innerHTML = `
-                    <svg viewBox="0 0 ${svg.w} ${svg.h}">
-                        <defs>
-                            <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:${options.opacity}" />
-                                <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:${options.opacity}" id="heatmap-start" />
-                                <stop offset="0%" style="stop-color:var(--art-progress-color);stop-opacity:1" id="heatmap-stop" />
-                                <stop offset="100%" style="stop-color:var(--art-progress-color);stop-opacity:1" />
-                            </linearGradient>
-                        </defs>
-                        <path fill="url(#heatmap-solids)" d="${pathD}"></path>
-                    </svg>
-                `
+          <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block; opacity: 0.45;">
+              <defs>
+                  <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1"></stop>
+                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1" id="heatmap-start"></stop>
+                      <stop offset="0%" style="stop-color:#fff;stop-opacity:1" id="heatmap-stop"></stop>
+                      <stop offset="100%" style="stop-color:#fff;stop-opacity:1"></stop>
+                  </linearGradient>
+              </defs>
+              <path fill="url(#heatmap-solids)" d="${pathD}"></path>
+          </svg>
+        `
 
         $start = query('#heatmap-start', $heatmap)
         $stop = query('#heatmap-stop', $heatmap)
