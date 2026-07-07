@@ -1,4 +1,7 @@
 import { bilibiliDanmuParseFromUrl } from './bilibili'
+import { mergeDanmuku } from './merge'
+import { createPreprocessor } from './preprocess'
+import { initSimilarity } from './wasm/similarity'
 import DanmuWorker from './worker.js?worker&inline'
 
 export default class Danmuku {
@@ -17,6 +20,7 @@ export default class Danmuku {
     this.isHide = false // 是否隐藏
     this.timer = null // 定时器
     this.index = 0 // 弹幕索引
+    this.wasmReady = null // WASM 初始化 Promise
 
     // 格式化后的配置项
     this.option = Danmuku.option
@@ -29,6 +33,15 @@ export default class Danmuku {
 
     // 创建 Web Worker, 用于计算弹幕的 top 值
     this.worker = new DanmuWorker()
+
+    // 初始化 WASM（如果开启合并）
+    if (this.option.merge) {
+      this.wasmReady = initSimilarity(this.option.mergeWasmUrl).catch((e) => {
+        console.error('[Danmuku] WASM 初始化失败:', e)
+        this.option.merge = false
+        return null
+      })
+    }
 
     // 绑定公用事件
     this.start = this.start.bind(this)
@@ -81,6 +94,12 @@ export default class Danmuku {
       DENSITY: {}, // 弹幕密度配置项
       SPEED: {}, // 弹幕速度配置项
       COLOR: [], // 颜色列表配置项
+      merge: false, // 是否开启弹幕合并
+      mergeThreshold: 30, // 合并时间窗口（秒），范围在 [5 ~ 120]
+      mergeMaxDist: 5, // 合并最大编辑距离，范围在 [1 ~ 20]
+      mergeMaxCosine: 45, // 合并最大余弦相似度，范围在 [0 ~ 100]
+      mergeWasmUrl: '', // WASM 文件地址，开启合并时必填
+      preprocess: true, // 是否开启文本预处理（全角转半角、去标点等）
     }
   }
 
@@ -116,6 +135,12 @@ export default class Danmuku {
       SPEED: 'object',
       COLOR: 'array',
       density: 'number',
+      merge: 'boolean',
+      mergeThreshold: 'number',
+      mergeMaxDist: 'number',
+      mergeMaxCosine: 'number',
+      mergeWasmUrl: 'string',
+      preprocess: 'boolean',
     }
   }
 
@@ -220,6 +245,9 @@ export default class Danmuku {
     this.filter('wait', (danmu) => {
       if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu)
+        if (result.length <= 2) {
+          console.log('[Danmuku] readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
+        }
       }
     })
 
@@ -293,6 +321,37 @@ export default class Danmuku {
       }
 
       errorHandle(Array.isArray(danmus), 'Danmuku need return an array as result')
+      console.log('[Danmuku] 原始弹幕数量:', danmus.length)
+
+      // 文本预处理：全角转半角、去尾部标点、压缩空格等
+      const preprocessor = this.option.preprocess ? createPreprocessor() : null
+      if (preprocessor) {
+        for (let i = 0; i < danmus.length; i++) {
+          const dm = danmus[i]
+          if (dm && dm.text) {
+            dm._normalizedText = preprocessor(dm.text)
+          }
+        }
+      }
+
+      // 弹幕合并：将时间接近且内容相似的弹幕合并
+      if (this.option.merge && danmus.length > 0) {
+        if (this.wasmReady) {
+          await this.wasmReady
+        }
+        try {
+          const before = danmus.length
+          danmus = mergeDanmuku(danmus, {
+            threshold: this.option.mergeThreshold,
+            maxDist: this.option.mergeMaxDist,
+            maxCosine: this.option.mergeMaxCosine,
+          })
+          console.log('[Danmuku] 合并:', before, '->', danmus.length)
+        }
+        catch (e) {
+          console.error('[Danmuku] 合并失败:', e)
+        }
+      }
 
       // 假如没有传入弹幕参数，则清空弹幕，否则追加弹幕
       if (danmuku === undefined) {
@@ -309,6 +368,7 @@ export default class Danmuku {
         await this.emit(danmu)
       }
 
+      console.log('[Danmuku] 最终队列数量:', this.queue.length)
       this.art.emit('artplayerPluginDanmuku:loaded', this.queue)
     }
     catch (error) {
@@ -322,6 +382,17 @@ export default class Danmuku {
   // 把原始弹幕转换到弹幕队列
   async emit(danmu) {
     const { clamp } = this.utils
+
+    // 打印前3条合并后的弹幕结构
+    if (this.queue.length < 3) {
+      console.log('[Danmuku] emit 输入:', JSON.stringify({
+        text: danmu.text,
+        time: danmu.time,
+        mode: danmu.mode,
+        color: danmu.color,
+        _mergeCount: danmu._mergeCount,
+      }))
+    }
 
     this.validator(danmu, {
       id: '?string', // 弹幕唯一标识
@@ -378,8 +449,11 @@ export default class Danmuku {
       $lastStartTime: 0, // 弹幕上次开始时间
     }
 
-    // 转换为wait状态
-    this.setState(item, 'wait')
+    // 清理临时属性
+    delete item._normalizedText
+
+    // 新弹幕直接加入 wait 阳列，跳过 setState 的 .filter() 开销
+    this.states.wait.push(item)
 
     // 添加到实际弹幕队列
     this.queue.push(item)
@@ -416,16 +490,22 @@ export default class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
-    this.option.density = clamp(this.option.density, 5, 85);   // 新增限制
+    this.option.density = clamp(this.option.density, 5, 85)
+    this.option.mergeThreshold = clamp(this.option.mergeThreshold, 5, 120)
+    this.option.mergeMaxDist = clamp(this.option.mergeMaxDist, 1, 20)
+    this.option.mergeMaxCosine = clamp(this.option.mergeMaxCosine, 0, 100)
 
     this.option.mount = this.option.mount || $controlsCenter
 
-    if (option.fontSize) this.reset()
+    if (option.fontSize) {
+      this.reset()
+    }
 
     // 通过配置项控制弹幕的显示和隐藏
     if (this.option.visible) {
       this.show()
-    } else {
+    }
+    else {
       this.hide()
     }
 
@@ -513,15 +593,29 @@ export default class Danmuku {
 
         const readys = this.readys
 
+        if (readys.length > 0) {
+          console.log('[Danmuku] readys 数量:', readys.length, '当前时间:', this.art.currentTime)
+        }
+
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index]
 
           const state = await this.option.beforeVisible(danmu)
 
           if (state) {
+            if (this.queue.length <= 5) {
+              console.log('[Danmuku] 即将显示:', { text: danmu.text, time: danmu.time })
+            }
             const { clientWidth, clientHeight } = this.$player
             danmu.$ref = this.$ref
             danmu.$ref.textContent = danmu.text
+
+            if (danmu._mergeCount && danmu._mergeCount > 1) {
+              const mark = document.createElement('span')
+              mark.className = 'art-danmuku-merge-mark'
+              mark.textContent = ` \u2211 ${danmu._mergeCount}`
+              danmu.$ref.appendChild(mark)
+            }
 
             this.$danmuku.appendChild(danmu.$ref)
 
@@ -537,9 +631,8 @@ export default class Danmuku {
 
             const distance = clientWidth + danmu.$ref.clientWidth
             danmu.$restTime = distance / this.velocity
-            if (danmu.mode == 1 || danmu.mode == 2)
-            {
-                danmu.$restTime = danmu.$restTime / 2
+            if (danmu.mode === 1 || danmu.mode === 2) {
+              danmu.$restTime = danmu.$restTime / 2
             }
 
             // === 关键修改：传 density 给 Worker 计算 top ===
@@ -587,7 +680,8 @@ export default class Danmuku {
                 }
 
                 this.art.emit('artplayerPluginDanmuku:visible', danmu)
-              } else {
+              }
+              else {
                 this.setState(danmu, 'ready')
                 this.$refs.push(danmu.$ref)
                 danmu.$ref = null
@@ -678,7 +772,24 @@ export default class Danmuku {
   }
 
   reset() {
-    this.queue.forEach(danmu => this.makeWait(danmu))
+    const recycled = []
+    for (let i = 0; i < this.queue.length; i++) {
+      const danmu = this.queue[i]
+      danmu.$state = 'wait'
+      if (danmu.$ref) {
+        danmu.$ref.style.cssText = Danmuku.cssText
+        danmu.$ref.style.visibility = 'hidden'
+        danmu.$ref.style.marginLeft = '0px'
+        danmu.$ref.style.transform = 'translateX(0px)'
+        danmu.$ref.style.transition = 'transform 0s linear 0s'
+        recycled.push(danmu.$ref)
+        danmu.$ref = null
+      }
+    }
+    for (let i = 0; i < recycled.length; i++) {
+      this.$refs.push(recycled[i])
+    }
+    this.states = { wait: this.queue.slice(), ready: [], emit: [], stop: [] }
     this.art.emit('artplayerPluginDanmuku:reset')
     return this
   }

@@ -80,7 +80,270 @@ function bilibiliDanmuParseFromUrl(url) {
     }
   });
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  sparsity = 30\n  // 10~90\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = sparsity / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1).sort((a, b) => a.top - b.top);\n    if (danmus.length === 0) return marginTop;\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    for (let i = 0; i < danmus.length; i++) {\n      const prevBottom = i === 0 ? marginTop : danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + target.height + verticalGap <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2).sort((a, b) => a.top - b.top);\n    if (danmus.length === 0) return maxTop - target.height;\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    for (let i = danmus.length - 1; i >= 0; i--) {\n      const itemBottom = danmus[i].top + danmus[i].height;\n      if (maxTop - itemBottom >= target.height + verticalGap) {\n        return maxTop - target.height;\n      }\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      return marginTop;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (lastRight + minHorizontalGap <= clientWidth) {\n        return trackTop;\n      }\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n        // 近似使用新弹幕高度\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          return prevBottom;\n        }\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+let module$1 = null;
+let ptr_buf = null;
+const MAX_STRING_LEN = 16005;
+async function initSimilarity(wasmUrl) {
+  const generatedModule = (await import("./similarity-gen-C-vm6ku1.mjs")).default;
+  const resp = await fetch(wasmUrl);
+  const wasmBinary = await resp.arrayBuffer();
+  module$1 = await generatedModule({ wasm: wasmBinary });
+  ptr_buf = module$1._malloc(MAX_STRING_LEN * 2 + 7);
+  if (ptr_buf % 2) {
+    ptr_buf++;
+  }
+  return module$1;
+}
+function beginChunk(maxDist, maxCosine, trimPinyin, crossMode) {
+  if (!module$1)
+    throw new Error("WASM not initialized");
+  module$1._begin_chunk(ptr_buf, maxDist, maxCosine, trimPinyin, crossMode);
+}
+function detectSimilarity(str, mode, indexL) {
+  if (!module$1)
+    throw new Error("WASM not initialized");
+  module$1.stringToUTF16(str, ptr_buf, MAX_STRING_LEN * 2);
+  const ret = module$1._check_similar(mode, indexL);
+  if (ret === 0)
+    return null;
+  const unsigned = ret >>> 0;
+  const reason = unsigned >>> 30;
+  const dist = unsigned >>> 19 & (1 << 11) - 1;
+  const idxDiff = unsigned & (1 << 19) - 1;
+  const REASON = ["==", "edit", "pinyin", "cosine"];
+  return { reason: REASON[reason] || "unknown", dist, idxDiff };
+}
+function selectMedianLength(strs) {
+  if (strs.length === 1) return strs[0];
+  const sorted = [...strs].sort((a, b) => a.length - b.length);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+const CHUNK_SIZE = 5e3;
+function processChunk(chunkItems, opts) {
+  const { threshold, maxDist, maxCosine, trimPinyin, crossMode } = opts;
+  const THRESHOLD_MS = threshold * 1e3;
+  beginChunk(maxDist, maxCosine, trimPinyin, crossMode);
+  const storage = [];
+  let indexL = 0;
+  let indexR = 0;
+  for (let i = 0; i < chunkItems.length; i++) {
+    const dm = chunkItems[i];
+    const dmTimeMs = (dm.time || 0) * 1e3;
+    const normalized = dm._normalizedText || dm.text;
+    while (indexL < indexR) {
+      const peeked = storage[indexL];
+      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS) break;
+      indexL++;
+    }
+    const sim = detectSimilarity(normalized, dm.mode || 0, indexL);
+    if (sim) {
+      const targetIdx = indexR - sim.idxDiff;
+      if (targetIdx >= 0 && targetIdx < storage.length) {
+        storage[targetIdx].items.push(dm);
+      } else {
+        storage[indexR] = { timeMs: dmTimeMs, items: [dm] };
+        indexR++;
+      }
+    } else {
+      storage[indexR] = { timeMs: dmTimeMs, items: [dm] };
+      indexR++;
+    }
+  }
+  return storage;
+}
+function mergeDanmuku(danmuku, options = {}) {
+  const {
+    threshold = 30,
+    maxDist = 5,
+    maxCosine = 45,
+    trimPinyin = true,
+    crossMode = true
+  } = options;
+  if (!danmuku || danmuku.length === 0) return [];
+  const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0));
+  const opts = { threshold, maxDist, maxCosine, trimPinyin, crossMode };
+  const allClusters = [];
+  for (let start = 0; start < sorted.length; start += CHUNK_SIZE) {
+    const end = Math.min(start + CHUNK_SIZE, sorted.length);
+    const chunk = sorted.slice(start, end);
+    const clusters = processChunk(chunk, opts);
+    for (let i = 0; i < clusters.length; i++) {
+      allClusters.push(clusters[i]);
+    }
+  }
+  const result = [];
+  for (let i = 0; i < allClusters.length; i++) {
+    const cluster = allClusters[i];
+    if (cluster.items.length === 1) {
+      const dm = { ...cluster.items[0] };
+      delete dm._normalizedText;
+      result.push(dm);
+    } else {
+      const textCounts = /* @__PURE__ */ new Map();
+      for (const item of cluster.items) {
+        const t = item._normalizedText || item.text;
+        textCounts.set(t, (textCounts.get(t) || 0) + 1);
+      }
+      let maxCount = 0;
+      for (const [, count] of textCounts) {
+        if (count > maxCount) maxCount = count;
+      }
+      const chosenText = selectMedianLength(
+        [...textCounts.entries()].filter(([, c]) => c === maxCount).map(([t]) => t)
+      );
+      const repr = {
+        ...cluster.items[0],
+        text: chosenText,
+        _mergeCount: cluster.items.length
+      };
+      delete repr._normalizedText;
+      result.push(repr);
+    }
+  }
+  return result;
+}
+const ENDING_CHARS = new Set(".。,，/?？!！…~～@^、+=-_♂♀ ");
+const TRIM_EXTRA_SPACE_RE = /[ \u3000]+/g;
+const TRIM_CJK_SPACE_RE = /([\u3000-\u9FFF\uFF00-\uFFEF]) (?=[\u3000-\u9FFF\uFF00-\uFFEF])/g;
+const WIDTH_ENTRIES = [
+  ["　", " "],
+  ["１", "1"],
+  ["２", "2"],
+  ["３", "3"],
+  ["４", "4"],
+  ["５", "5"],
+  ["６", "6"],
+  ["７", "7"],
+  ["８", "8"],
+  ["９", "9"],
+  ["０", "0"],
+  ["！", "!"],
+  ["＠", "@"],
+  ["＃", "#"],
+  ["＄", "$"],
+  ["％", "%"],
+  ["＾", "^"],
+  ["＆", "&"],
+  ["＊", "*"],
+  ["（", "("],
+  ["）", ")"],
+  ["－", "-"],
+  ["＝", "="],
+  ["＿", "_"],
+  ["＋", "+"],
+  ["［", "["],
+  ["］", "]"],
+  ["｛", "{"],
+  ["｝", "}"],
+  ["；", ";"],
+  ["：", ":"],
+  ["，", ","],
+  ["．", "."],
+  ["／", "/"],
+  ["＜", "<"],
+  ["＞", ">"],
+  ["？", "?"],
+  ["｜", "|"],
+  ["～", "~"],
+  ["ｑ", "q"],
+  ["ｗ", "w"],
+  ["ｅ", "e"],
+  ["ｒ", "r"],
+  ["ｔ", "t"],
+  ["ｙ", "y"],
+  ["ｕ", "u"],
+  ["ｉ", "i"],
+  ["ｏ", "o"],
+  ["ｐ", "p"],
+  ["ａ", "a"],
+  ["ｓ", "s"],
+  ["ｄ", "d"],
+  ["ｆ", "f"],
+  ["ｇ", "g"],
+  ["ｈ", "h"],
+  ["ｊ", "j"],
+  ["ｋ", "k"],
+  ["ｌ", "l"],
+  ["ｚ", "z"],
+  ["ｘ", "x"],
+  ["ｃ", "c"],
+  ["ｖ", "v"],
+  ["ｂ", "b"],
+  ["ｎ", "n"],
+  ["ｍ", "m"],
+  ["Ｑ", "Q"],
+  ["Ｗ", "W"],
+  ["Ｅ", "E"],
+  ["Ｒ", "R"],
+  ["Ｔ", "T"],
+  ["Ｙ", "Y"],
+  ["Ｕ", "U"],
+  ["Ｉ", "I"],
+  ["Ｏ", "O"],
+  ["Ｐ", "P"],
+  ["Ａ", "A"],
+  ["Ｓ", "S"],
+  ["Ｄ", "D"],
+  ["Ｆ", "F"],
+  ["Ｇ", "G"],
+  ["Ｈ", "H"],
+  ["Ｊ", "J"],
+  ["Ｋ", "K"],
+  ["Ｌ", "L"],
+  ["Ｚ", "Z"],
+  ["Ｘ", "X"],
+  ["Ｃ", "C"],
+  ["Ｖ", "V"],
+  ["Ｂ", "B"],
+  ["Ｎ", "N"],
+  ["Ｍ", "M"]
+];
+const WIDTH_TABLE = new Map(WIDTH_ENTRIES);
+const DEFAULT_FORCELIST = [
+  [/^23{2,}$/, "23333"],
+  [/^6{3,}$/, "66666"]
+];
+function createPreprocessor(options = {}) {
+  const {
+    trimEnding = true,
+    trimSpace = true,
+    trimWidth = true,
+    forcelist = DEFAULT_FORCELIST
+  } = options;
+  return function preprocess(text) {
+    if (!text || typeof text !== "string") {
+      return text;
+    }
+    let len = text.length;
+    if (trimEnding) {
+      while (len > 0 && ENDING_CHARS.has(text.charAt(len - 1)))
+        len--;
+      if (len === 0) {
+        len = text.length;
+      }
+    }
+    let result = "";
+    if (trimWidth) {
+      for (let i = 0; i < len; i++) {
+        const c = text.charAt(i);
+        result += WIDTH_TABLE.get(c) || c;
+      }
+    } else {
+      result = text.slice(0, len);
+    }
+    if (trimSpace) {
+      result = result.replace(TRIM_EXTRA_SPACE_RE, " ").replace(TRIM_CJK_SPACE_RE, "$1");
+    }
+    for (const [pattern, replacement] of forcelist) {
+      if (pattern.test(result)) {
+        result = result.replace(pattern, replacement);
+        break;
+      }
+    }
+    return result;
+  };
+}
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop) return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop) return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop) return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          return trackTop;\n        }\n      }\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            return prevBottom;\n          }\n        }\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -119,10 +382,18 @@ class Danmuku {
     this.isHide = false;
     this.timer = null;
     this.index = 0;
+    this.wasmReady = null;
     this.option = Danmuku.option;
     this.states = { wait: [], ready: [], emit: [], stop: [] };
     this.config(option, true);
     this.worker = new WorkerWrapper();
+    if (this.option.merge) {
+      this.wasmReady = initSimilarity(this.option.mergeWasmUrl).catch((e) => {
+        console.error("[Danmuku] WASM 初始化失败:", e);
+        this.option.merge = false;
+        return null;
+      });
+    }
     this.start = this.start.bind(this);
     this.stop = this.stop.bind(this);
     this.reset = this.reset.bind(this);
@@ -136,40 +407,82 @@ class Danmuku {
     art.on("resize", this.resize);
     this.load();
   }
+  // 默认配置
   static get option() {
     return {
       danmuku: [],
+      // 弹幕数据
       speed: 20,
+      // 弹幕持续时间，范围在[1 ~ 10]
+      density: 25,
+      // 弹幕密度，范围在[5 ~ 85]
       margin: [10, "25%"],
+      // 弹幕上下边距，支持像素数字和百分比
       opacity: 1,
+      // 弹幕透明度，范围在[0 ~ 1]
       color: "#FFFFFF",
+      // 默认弹幕颜色，可以被单独弹幕项覆盖
       mode: 0,
+      // 默认弹幕模式: 0: 滚动，1: 顶部，2: 底部
       modes: [0, 1, 2],
+      // 弹幕可见的模式
       fontSize: 25,
+      // 弹幕字体大小，支持像素数字和百分比
       antiOverlap: true,
+      // 弹幕是否防重叠
       synchronousPlayback: false,
+      // 是否同步播放速度
       mount: void 0,
+      // 弹幕发射器挂载点, 默认为播放器控制栏中部
       heatmap: false,
+      // 是否开启热力图
       width: 512,
+      // 当播放器宽度小于此值时，弹幕发射器置于播放器底部
       points: [],
+      // 热力图数据
       filter: () => true,
+      // 弹幕载入前的过滤器，只支持返回布尔值
       beforeEmit: () => true,
+      // 弹幕发送前的过滤器，支持返回 Promise
       beforeVisible: () => true,
+      // 弹幕显示前的过滤器，支持返回 Promise
       visible: true,
+      // 弹幕层是否可见
       emitter: true,
+      // 是否开启弹幕发射器
       maxLength: 200,
+      // 弹幕输入框最大长度, 范围在[1 ~ 1000]
       lockTime: 5,
+      // 输入框锁定时间，范围在[1 ~ 60]
       theme: "dark",
+      // 弹幕主题，支持 dark 和 light，只在自定义挂载时生效
       OPACITY: {},
+      // 不透明度配置项
       FONT_SIZE: {},
+      // 弹幕字号配置项
       MARGIN: {},
+      // 显示区域配置项
+      DENSITY: {},
+      // 弹幕密度配置项
       SPEED: {},
+      // 弹幕速度配置项
       COLOR: [],
-      // === 新参数：弹幕密度（屏幕宽度百分比）===
-      sparsity: 30
-      // 默认 30%，范围 10~90
+      // 颜色列表配置项
+      merge: false,
+      // 是否开启弹幕合并
+      mergeThreshold: 30,
+      // 合并时间窗口（秒），范围在 [5 ~ 120]
+      mergeMaxDist: 5,
+      // 合并最大编辑距离，范围在 [1 ~ 20]
+      mergeMaxCosine: 45,
+      // 合并最大余弦相似度，范围在 [0 ~ 100]
+      mergeWasmUrl: "",
+      // WASM 文件地址，开启合并时必填
+      preprocess: true
+      // 是否开启文本预处理（全角转半角、去标点等）
     };
   }
+  // 配置校验
   static get scheme() {
     return {
       // ... 原有字段保持不变
@@ -200,8 +513,13 @@ class Danmuku {
       MARGIN: "object",
       SPEED: "object",
       COLOR: "array",
-      sparsity: "number"
-      // 新增
+      density: "number",
+      merge: "boolean",
+      mergeThreshold: "number",
+      mergeMaxDist: "number",
+      mergeMaxCosine: "number",
+      mergeWasmUrl: "string",
+      preprocess: "boolean"
     };
   }
   // 初始弹幕样式
@@ -280,10 +598,12 @@ class Danmuku {
   get readys() {
     const { currentTime } = this.art;
     const result = [];
-    this.filter("ready", (danmu) => result.push(danmu));
     this.filter("wait", (danmu) => {
       if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu);
+        if (result.length <= 2) {
+          console.log("[Danmuku] readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
+        }
       }
     });
     return result;
@@ -337,6 +657,32 @@ class Danmuku {
         danmus = target;
       }
       errorHandle(Array.isArray(danmus), "Danmuku need return an array as result");
+      console.log("[Danmuku] 原始弹幕数量:", danmus.length);
+      const preprocessor = this.option.preprocess ? createPreprocessor() : null;
+      if (preprocessor) {
+        for (let i = 0; i < danmus.length; i++) {
+          const dm = danmus[i];
+          if (dm && dm.text) {
+            dm._normalizedText = preprocessor(dm.text);
+          }
+        }
+      }
+      if (this.option.merge && danmus.length > 0) {
+        if (this.wasmReady) {
+          await this.wasmReady;
+        }
+        try {
+          const before = danmus.length;
+          danmus = mergeDanmuku(danmus, {
+            threshold: this.option.mergeThreshold,
+            maxDist: this.option.mergeMaxDist,
+            maxCosine: this.option.mergeMaxCosine
+          });
+          console.log("[Danmuku] 合并:", before, "->", danmus.length);
+        } catch (e) {
+          console.error("[Danmuku] 合并失败:", e);
+        }
+      }
       if (danmuku === void 0) {
         this.reset();
         this.queue = [];
@@ -348,6 +694,7 @@ class Danmuku {
         const danmu = danmus[index];
         await this.emit(danmu);
       }
+      console.log("[Danmuku] 最终队列数量:", this.queue.length);
       this.art.emit("artplayerPluginDanmuku:loaded", this.queue);
     } catch (error) {
       this.art.emit("artplayerPluginDanmuku:error", error);
@@ -358,6 +705,15 @@ class Danmuku {
   // 把原始弹幕转换到弹幕队列
   async emit(danmu) {
     const { clamp } = this.utils;
+    if (this.queue.length < 3) {
+      console.log("[Danmuku] emit 输入:", JSON.stringify({
+        text: danmu.text,
+        time: danmu.time,
+        mode: danmu.mode,
+        color: danmu.color,
+        _mergeCount: danmu._mergeCount
+      }));
+    }
     this.validator(danmu, {
       id: "?string",
       // 弹幕唯一标识
@@ -407,7 +763,8 @@ class Danmuku {
       $lastStartTime: 0
       // 弹幕上次开始时间
     };
-    this.setState(item, "wait");
+    delete item._normalizedText;
+    this.states.wait.push(item);
     this.queue.push(item);
     return this;
   }
@@ -418,7 +775,8 @@ class Danmuku {
     const changed = Object.keys(option).some(
       (key) => JSON.stringify(this.option[key]) !== JSON.stringify(option[key])
     );
-    if (!changed && !isInit) return this;
+    if (!changed && !isInit)
+      return this;
     this.option = Object.assign({}, Danmuku.option, this.option, option);
     this.validator(this.option, Danmuku.scheme);
     this.option.mode = clamp(this.option.mode, 0, 2);
@@ -426,9 +784,14 @@ class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1);
     this.option.lockTime = clamp(this.option.lockTime, 1, 60);
     this.option.maxLength = clamp(this.option.maxLength, 1, 1e3);
-    this.option.sparsity = clamp(this.option.sparsity ?? 30, 10, 90);
+    this.option.density = clamp(this.option.density, 5, 85);
+    this.option.mergeThreshold = clamp(this.option.mergeThreshold, 5, 120);
+    this.option.mergeMaxDist = clamp(this.option.mergeMaxDist, 1, 20);
+    this.option.mergeMaxCosine = clamp(this.option.mergeMaxCosine, 0, 100);
     this.option.mount = this.option.mount || $controlsCenter;
-    if (option.fontSize) this.reset();
+    if (option.fontSize) {
+      this.reset();
+    }
     if (this.option.visible) {
       this.show();
     } else {
@@ -499,13 +862,25 @@ class Danmuku {
           }
         });
         const readys = this.readys;
+        if (readys.length > 0) {
+          console.log("[Danmuku] readys 数量:", readys.length, "当前时间:", this.art.currentTime);
+        }
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index];
           const state = await this.option.beforeVisible(danmu);
           if (state) {
+            if (this.queue.length <= 5) {
+              console.log("[Danmuku] 即将显示:", { text: danmu.text, time: danmu.time });
+            }
             const { clientWidth, clientHeight } = this.$player;
             danmu.$ref = this.$ref;
             danmu.$ref.textContent = danmu.text;
+            if (danmu._mergeCount && danmu._mergeCount > 1) {
+              const mark = document.createElement("span");
+              mark.className = "art-danmuku-merge-mark";
+              mark.textContent = ` ∑ ${danmu._mergeCount}`;
+              danmu.$ref.appendChild(mark);
+            }
             this.$danmuku.appendChild(danmu.$ref);
             danmu.$ref.style.opacity = this.option.opacity;
             danmu.$ref.style.fontSize = `${this.fontSize}px`;
@@ -516,18 +891,19 @@ class Danmuku {
             danmu.$lastStartTime = Date.now();
             const distance = clientWidth + danmu.$ref.clientWidth;
             danmu.$restTime = distance / this.velocity;
+            if (danmu.mode === 1 || danmu.mode === 2) {
+              danmu.$restTime = danmu.$restTime / 2;
+            }
             const { result: top } = await this.postMessage({
               type: "getDanmuTop",
               target: {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
                 width: danmu.$ref.clientWidth
-                // 新增：弹幕自身宽度
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
-              sparsity: this.option.sparsity,
-              // 新参数
+              density: this.option.density,
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
@@ -567,7 +943,9 @@ class Danmuku {
           }
         }
       }
-      if (!this.isStop) this.update();
+      if (!this.isStop) {
+        this.update();
+      }
     });
     return this;
   }
@@ -628,7 +1006,24 @@ class Danmuku {
     return this;
   }
   reset() {
-    this.queue.forEach((danmu) => this.makeWait(danmu));
+    const recycled = [];
+    for (let i = 0; i < this.queue.length; i++) {
+      const danmu = this.queue[i];
+      danmu.$state = "wait";
+      if (danmu.$ref) {
+        danmu.$ref.style.cssText = Danmuku.cssText;
+        danmu.$ref.style.visibility = "hidden";
+        danmu.$ref.style.marginLeft = "0px";
+        danmu.$ref.style.transform = "translateX(0px)";
+        danmu.$ref.style.transition = "transform 0s linear 0s";
+        recycled.push(danmu.$ref);
+        danmu.$ref = null;
+      }
+    }
+    for (let i = 0; i < recycled.length; i++) {
+      this.$refs.push(recycled[i]);
+    }
+    this.states = { wait: this.queue.slice(), ready: [], emit: [], stop: [] };
     this.art.emit("artplayerPluginDanmuku:reset");
     return this;
   }
@@ -829,7 +1224,7 @@ const $mode_2_on = '<svg class="apd-icon apd-mode-2-on" xmlns:xlink="http://www.
 const $off = '<svg class="apd-icon apd-toggle-off" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="m8.085 4.891-.999-1.499a1.008 1.008 0 0 1 1.679-1.118l1.709 2.566c.54-.008 1.045-.012 1.515-.012h.13c.345 0 .707.003 1.088.007l1.862-2.59a1.008 1.008 0 0 1 1.637 1.177l-1.049 1.46c.788.02 1.631.046 2.53.078 1.958.069 3.468 1.6 3.74 3.507.088.613.13 2.158.16 3.276l.001.027c.01.333.017.63.025.856a.987.987 0 0 1-1.974.069c-.008-.23-.016-.539-.025-.881v-.002c-.028-1.103-.066-2.541-.142-3.065-.143-1.004-.895-1.78-1.854-1.813-2.444-.087-4.466-.13-6.064-.131-1.598 0-3.619.044-6.063.13a2.037 2.037 0 0 0-1.945 1.748c-.15 1.04-.225 2.341-.225 3.904 0 1.874.11 3.474.325 4.798.154.949.95 1.66 1.91 1.708a97.58 97.58 0 0 0 5.416.139.988.988 0 0 1 0 1.975c-2.196 0-3.61-.047-5.513-.141A4.012 4.012 0 0 1 2.197 17.7c-.236-1.446-.351-3.151-.351-5.116 0-1.64.08-3.035.245-4.184A4.013 4.013 0 0 1 5.92 4.96c.761-.027 1.483-.05 2.164-.069Zm4.436 4.707h-1.32v4.63h2.222v.848h-2.618v1.078h2.431a5.01 5.01 0 0 1 3.575-3.115V9.598h-1.276a8.59 8.59 0 0 0 .748-1.42l-1.089-.384a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.289h-3.2v.979h2.067v1.43H7.483l-.308 3.454h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.004c.285.02.551.04.818.04 1.001-.066 1.562-.418 1.694-1.056.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858H15.8Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902H15.8v.902h-1.254Zm3.517 10.594a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-.002-1.502a2.5 2.5 0 0 1-2.217-3.657l3.326 3.398a2.49 2.49 0 0 1-1.109.259Zm2.5-2.5c0 .42-.103.815-.286 1.162l-3.328-3.401a2.5 2.5 0 0 1 3.614 2.239Z" clip-rule="evenodd"></path></svg>';
 const $on = '<svg class="apd-icon apd-toggle-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="M11.989 4.828c-.47 0-.975.004-1.515.012l-1.71-2.566a1.008 1.008 0 0 0-1.678 1.118l.999 1.5c-.681.018-1.403.04-2.164.068a4.013 4.013 0 0 0-3.83 3.44c-.165 1.15-.245 2.545-.245 4.185 0 1.965.115 3.67.35 5.116a4.012 4.012 0 0 0 3.763 3.363l.906.046c1.205.063 1.808.095 3.607.095a.988.988 0 0 0 0-1.975c-1.758 0-2.339-.03-3.501-.092l-.915-.047a2.037 2.037 0 0 1-1.91-1.708c-.216-1.324-.325-2.924-.325-4.798 0-1.563.076-2.864.225-3.904.14-.977.96-1.713 1.945-1.747 2.444-.087 4.465-.13 6.063-.131 1.598 0 3.62.044 6.064.13.96.034 1.71.81 1.855 1.814.075.524.113 1.962.141 3.065v.002c.01.342.017.65.025.88a.987.987 0 1 0 1.974-.068c-.008-.226-.016-.523-.025-.856v-.027c-.03-1.118-.073-2.663-.16-3.276-.273-1.906-1.783-3.438-3.74-3.507-.9-.032-1.743-.058-2.531-.078l1.05-1.46a1.008 1.008 0 0 0-1.638-1.177l-1.862 2.59c-.38-.004-.744-.007-1.088-.007h-.13Zm.521 4.775h-1.32v4.631h2.222v.847h-2.618v1.078h2.618l.003.678c.36.026.714.163 1.01.407h.11v-1.085h2.694v-1.078h-2.695v-.847H16.8v-4.63h-1.276a8.59 8.59 0 0 0 .748-1.42L15.183 7.8a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.294h-3.2v.98H9.33v1.43H7.472l-.308 3.453h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.005c.285.02.551.04.818.04 1.001-.067 1.562-.419 1.694-1.057.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858h1.254Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902h1.254v.902h-1.254Z" clip-rule="evenodd"></path><path fill="#00AEEC" fill-rule="evenodd" d="M22.846 14.627a1 1 0 0 0-1.412.075l-5.091 5.703-2.216-2.275-.097-.086-.008-.005a1 1 0 0 0-1.322 1.493l2.963 3.041.093.083.007.005c.407.315 1 .27 1.354-.124l5.81-6.505.08-.102.005-.008a1 1 0 0 0-.166-1.295Z" clip-rule="evenodd"></path></svg>';
 const $style = '<svg class="apd-icon apd-style-icon" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 22 22" viewBox="0 0 22 22" width="36"  height="24" ><path d="M17 16H5c-.55 0-1 .45-1 1s.45 1 1 1h12c.55 0 1-.45 1-1s-.45-1-1-1zM6.96 15c.39 0 .74-.24.89-.6l.65-1.6h5l.66 1.6c.15.36.5.6.89.6.69 0 1.15-.71.88-1.34l-3.88-8.97C11.87 4.27 11.46 4 11 4s-.87.27-1.05.69l-3.88 8.97c-.27.63.2 1.34.89 1.34zM11 5.98 12.87 11H9.13L11 5.98z"></path></svg>';
-const style = ".artplayer-plugin-danmuku {\n  display: flex;\n  position: relative;\n  z-index: 99;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  height: 32px;\n  width: 100%;\n  color: #fff;\n  font-weight: 300;\n  flex-shrink: 0;\n  gap: 10px;\n}\n.artplayer-plugin-danmuku .apd-icon {\n  cursor: pointer;\n  opacity: 0.75;\n  transition: all 0.2s ease;\n  fill: #fff;\n}\n.artplayer-plugin-danmuku .apd-icon:hover {\n  opacity: 1;\n}\n.artplayer-plugin-danmuku .apd-config {\n  display: flex;\n  position: relative;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 320px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel .apd-config-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-config:hover .apd-config-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-config-mode,\n.artplayer-plugin-danmuku .apd-config-slider,\n.artplayer-plugin-danmuku .apd-config-other,\n.artplayer-plugin-danmuku .apd-style-mode {\n  margin-bottom: 15px;\n}\n.artplayer-plugin-danmuku .apd-modes {\n  display: flex;\n  align-items: center;\n  margin-top: 5px;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode {\n  cursor: pointer;\n  text-align: center;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode:hover {\n  color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-config-slider {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n}\n.artplayer-plugin-danmuku .apd-config-slider .apd-value {\n  width: 32px;\n  text-align: right;\n}\n.artplayer-plugin-danmuku .apd-slider {\n  position: relative;\n  flex: 1;\n  display: flex;\n  height: 20px;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-line {\n  position: relative;\n  height: 2px;\n  width: 100%;\n  overflow: hidden;\n  border-radius: 3px;\n  background-color: rgba(255, 255, 255, 0.25);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points .apd-slider-point {\n  width: 2px;\n  height: 2px;\n  border-radius: 50%;\n  background-color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-progress {\n  width: 0%;\n  height: 100%;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-dot {\n  position: absolute;\n  transform: translateX(-6px);\n  left: 0%;\n  width: 12px;\n  height: 12px;\n  border-radius: 50%;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  position: absolute;\n  bottom: -12px;\n  width: calc(100% + 32px);\n  color: #777;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps .apd-slider-step {\n  flex-shrink: 0;\n  width: 36px;\n  text-align: center;\n  scale: 0.95;\n}\n.artplayer-plugin-danmuku .apd-config-other {\n  display: flex;\n  align-items: center;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-check-off,\n.artplayer-plugin-danmuku .apd-config-other .apd-check-on {\n  width: 16px;\n  height: 16px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other {\n  display: flex;\n  align-items: center;\n  cursor: pointer;\n  gap: 2px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other:hover {\n  color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-emitter {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  height: 100%;\n  background-color: rgba(255, 255, 255, 0.25);\n  border-radius: 5px;\n}\n.artplayer-plugin-danmuku .apd-style {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 200px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel .apd-style-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-style:hover .apd-style-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-colors {\n  display: flex;\n  flex-wrap: wrap;\n  margin-top: 5px;\n  gap: 8px;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color {\n  width: 16px;\n  height: 16px;\n  border-radius: 2px;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color.apd-active {\n  border: 1px solid black;\n  box-shadow: 0 0 0 1px #fff;\n}\n.artplayer-plugin-danmuku .apd-input {\n  outline: none;\n  height: 100%;\n  flex: 1;\n  min-width: 0;\n  width: auto;\n  border: none;\n  line-height: 1;\n  color: #fff;\n  background-color: transparent;\n}\n.artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-send {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  width: 60px;\n  flex-shrink: 0;\n  cursor: pointer;\n  text-shadow: none;\n  border-top-right-radius: 5px;\n  border-bottom-right-radius: 5px;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-send.apd-lock {\n  cursor: not-allowed;\n  color: #666;\n  background-color: #e7e7e7;\n}\n.art-controls-center .apd-emitter {\n  width: 260px;\n  flex: none;\n}\n.art-fullscreen .artplayer-plugin-danmuku,\n.art-fullscreen-web .artplayer-plugin-danmuku {\n  height: 38px;\n  gap: 16px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-on,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-on {\n  width: 28px;\n  height: 28px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-emitter,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-emitter {\n  width: 400px;\n  flex: none;\n}\n.art-video-player > .artplayer-plugin-danmuku {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: -40px;\n  padding: 0 10px;\n}\n.art-video-player:has(> .artplayer-plugin-danmuku) {\n  margin-bottom: 40px;\n}\n[data-danmuku-emitter='false'] .apd-emitter {\n  display: none !important;\n}\n[data-danmuku-emitter='false'] .art-controls-center .artplayer-plugin-danmuku {\n  justify-content: flex-end;\n  gap: 18px;\n}\n[data-danmuku-emitter='false'].art-fullscreen .art-controls-center .artplayer-plugin-danmuku,\n[data-danmuku-emitter='false'].art-fullscreen-web .art-controls-center .artplayer-plugin-danmuku {\n  gap: 24px;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-icon {\n  fill: #333;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-emitter {\n  background-color: #f1f2f3;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input {\n  color: #000;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(0, 0, 0, 0.3);\n}\n[data-danmuku-visible='false'] .apd-toggle-off {\n  display: block;\n}\n[data-danmuku-visible='false'] .apd-toggle-on {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-off {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-on {\n  display: none;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-off {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-off {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-on {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-off {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-on {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-off {\n  display: none;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-off {\n  display: block;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-on {\n  display: none;\n}\n[data-danmuku-mode0='false'] .art-danmuku [data-mode='0'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-off {\n  display: none;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-on {\n  display: block;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] path {\n  fill: #00a1d6;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-off {\n  display: block;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-on {\n  display: none;\n}\n[data-danmuku-mode1='false'] .art-danmuku [data-mode='1'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-off {\n  display: none;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-on {\n  display: block;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] path {\n  fill: #00a1d6;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-off {\n  display: block;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-on {\n  display: none;\n}\n[data-danmuku-mode2='false'] .art-danmuku [data-mode='2'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-off {\n  display: none;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-on {\n  display: block;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] path {\n  fill: #00a1d6;\n}\n";
+const style = ".artplayer-plugin-danmuku {\n  display: flex;\n  position: relative;\n  z-index: 99;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  height: 32px;\n  width: 100%;\n  color: #fff;\n  font-weight: 300;\n  flex-shrink: 0;\n  gap: 10px;\n}\n.artplayer-plugin-danmuku .apd-icon {\n  cursor: pointer;\n  opacity: 0.75;\n  transition: all 0.2s ease;\n  fill: #fff;\n}\n.artplayer-plugin-danmuku .apd-icon:hover {\n  opacity: 1;\n}\n.artplayer-plugin-danmuku .apd-config {\n  display: flex;\n  position: relative;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 320px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel .apd-config-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-config:hover .apd-config-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-config-mode,\n.artplayer-plugin-danmuku .apd-config-slider,\n.artplayer-plugin-danmuku .apd-config-other,\n.artplayer-plugin-danmuku .apd-style-mode {\n  margin-bottom: 15px;\n}\n.artplayer-plugin-danmuku .apd-modes {\n  display: flex;\n  align-items: center;\n  margin-top: 5px;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode {\n  cursor: pointer;\n  text-align: center;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode:hover {\n  color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-config-slider {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n}\n.artplayer-plugin-danmuku .apd-config-slider .apd-value {\n  width: 32px;\n  text-align: right;\n}\n.artplayer-plugin-danmuku .apd-slider {\n  position: relative;\n  flex: 1;\n  display: flex;\n  height: 20px;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-line {\n  position: relative;\n  height: 2px;\n  width: 100%;\n  overflow: hidden;\n  border-radius: 3px;\n  background-color: rgba(255, 255, 255, 0.25);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points .apd-slider-point {\n  width: 2px;\n  height: 2px;\n  border-radius: 50%;\n  background-color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-progress {\n  width: 0%;\n  height: 100%;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-dot {\n  position: absolute;\n  transform: translateX(-6px);\n  left: 0%;\n  width: 12px;\n  height: 12px;\n  border-radius: 50%;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  position: absolute;\n  bottom: -12px;\n  width: calc(100% + 32px);\n  color: #777;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps .apd-slider-step {\n  flex-shrink: 0;\n  width: 36px;\n  text-align: center;\n  scale: 0.95;\n}\n.artplayer-plugin-danmuku .apd-config-other {\n  display: flex;\n  align-items: center;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-check-off,\n.artplayer-plugin-danmuku .apd-config-other .apd-check-on {\n  width: 16px;\n  height: 16px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other {\n  display: flex;\n  align-items: center;\n  cursor: pointer;\n  gap: 2px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other:hover {\n  color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-emitter {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  height: 100%;\n  background-color: rgba(255, 255, 255, 0.25);\n  border-radius: 5px;\n}\n.artplayer-plugin-danmuku .apd-style {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 200px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel .apd-style-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-style:hover .apd-style-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-colors {\n  display: flex;\n  flex-wrap: wrap;\n  margin-top: 5px;\n  gap: 8px;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color {\n  width: 16px;\n  height: 16px;\n  border-radius: 2px;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color.apd-active {\n  border: 1px solid black;\n  box-shadow: 0 0 0 1px #fff;\n}\n.artplayer-plugin-danmuku .apd-input {\n  outline: none;\n  height: 100%;\n  flex: 1;\n  min-width: 0;\n  width: auto;\n  border: none;\n  line-height: 1;\n  color: #fff;\n  background-color: transparent;\n}\n.artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-send {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  width: 60px;\n  flex-shrink: 0;\n  cursor: pointer;\n  text-shadow: none;\n  border-top-right-radius: 5px;\n  border-bottom-right-radius: 5px;\n  background-color: #00a1d6;\n}\n.artplayer-plugin-danmuku .apd-send.apd-lock {\n  cursor: not-allowed;\n  color: #666;\n  background-color: #e7e7e7;\n}\n.art-controls-center .apd-emitter {\n  width: 260px;\n  flex: none;\n}\n.art-fullscreen .artplayer-plugin-danmuku,\n.art-fullscreen-web .artplayer-plugin-danmuku {\n  height: 38px;\n  gap: 16px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-on,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-on {\n  width: 28px;\n  height: 28px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-emitter,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-emitter {\n  width: 400px;\n  flex: none;\n}\n.art-video-player > .artplayer-plugin-danmuku {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: -40px;\n  padding: 0 10px;\n}\n.art-video-player:has(> .artplayer-plugin-danmuku) {\n  margin-bottom: 40px;\n}\n[data-danmuku-emitter='false'] .apd-emitter {\n  display: none !important;\n}\n[data-danmuku-emitter='false'] .art-controls-center .artplayer-plugin-danmuku {\n  justify-content: flex-end;\n  gap: 18px;\n}\n[data-danmuku-emitter='false'].art-fullscreen .art-controls-center .artplayer-plugin-danmuku,\n[data-danmuku-emitter='false'].art-fullscreen-web .art-controls-center .artplayer-plugin-danmuku {\n  gap: 24px;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-icon {\n  fill: #333;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-emitter {\n  background-color: #f1f2f3;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input {\n  color: #000;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(0, 0, 0, 0.3);\n}\n[data-danmuku-visible='false'] .apd-toggle-off {\n  display: block;\n}\n[data-danmuku-visible='false'] .apd-toggle-on {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-off {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-on {\n  display: none;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-off {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-off {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-on {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-off {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-on {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-off {\n  display: none;\n}\n.art-danmuku-merge-mark {\n  opacity: 0.6;\n  font-size: 0.8em;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-off {\n  display: block;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-on {\n  display: none;\n}\n[data-danmuku-mode0='false'] .art-danmuku [data-mode='0'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-off {\n  display: none;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-on {\n  display: block;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] path {\n  fill: #00a1d6;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-off {\n  display: block;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-on {\n  display: none;\n}\n[data-danmuku-mode1='false'] .art-danmuku [data-mode='1'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-off {\n  display: none;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-on {\n  display: block;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] path {\n  fill: #00a1d6;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-off {\n  display: block;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-on {\n  display: none;\n}\n[data-danmuku-mode2='false'] .art-danmuku [data-mode='2'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-off {\n  display: none;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-on {\n  display: block;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] {\n  color: #00a1d6;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] path {\n  fill: #00a1d6;\n}\n";
 class Setting {
   constructor(art, danmuku) {
     this.art = art;
@@ -865,7 +1260,8 @@ class Setting {
       opacity: null,
       margin: null,
       fontSize: null,
-      speed: null
+      speed: null,
+      density: null
     };
     this.emitting = false;
     this.isLock = false;
@@ -959,7 +1355,7 @@ class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
-                        <div class="apd-config-slider apd-config-sparsity">
+                        <div class="apd-config-slider apd-config-density">
                             弹幕密度
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
@@ -1029,85 +1425,63 @@ class Setting {
       ...this.option.FONT_SIZE
     };
   }
-  get SPARSITY() {
+  get DENSITY() {
     return {
       min: 0,
-      max: 8,
+      max: 4,
       steps: [
         {
           name: "极密",
-          value: 10
+          value: 5
         },
         {
-          name: "密集",
-          value: 20,
-          hide: true
-        },
-        {
-          name: "密集",
-          value: 30,
-          hide: true
-        },
-        {
-          name: "密集",
-          value: 40,
+          name: "较密",
+          value: 25,
           hide: true
         },
         {
           name: "适中",
-          value: 50
+          value: 65
         },
         {
-          name: "稀疏",
-          value: 60,
-          hide: true
-        },
-        {
-          name: "稀疏",
-          value: 70,
-          hide: true
-        },
-        {
-          name: "稀疏",
-          value: 80,
+          name: "较稀",
+          value: 45,
           hide: true
         },
         {
           name: "极疏",
-          value: 90
+          value: 85
         }
       ],
-      ...this.option.SPARSITY
+      ...this.option.DENSITY
     };
   }
   get MARGIN() {
     return {
       min: 0,
-      max: 5,
+      max: 4,
       steps: [
         {
-          name: "1/6",
+          name: "极少",
           value: [10, "83%"]
         },
         {
-          name: "1/3",
-          value: [10, "66%"]
+          name: "较少",
+          value: [10, "66%"],
+          hide: true
         },
         {
           name: "半屏",
           value: [10, "50%"]
         },
         {
-          name: "2/3",
-          value: [10, "33%"]
-        },
-        {
-          name: "5/6",
-          value: [10, "16%"]
+          name: "较多",
+          value: [10, "33%"],
+          hide: true
         },
         {
           name: "满屏",
-          value: [10, 10]
+          value: [10, "16%"]
         }
       ],
       ...this.option.MARGIN
@@ -1116,11 +1490,11 @@ class Setting {
   get SPEED() {
     return {
       min: 0,
-      max: 8,
+      max: 4,
       steps: [
         {
           name: "极慢",
-          value: 20
+          value: 22
         },
         {
           name: "较慢",
@@ -1128,18 +1502,8 @@ class Setting {
           hide: true
         },
         {
-          name: "较慢",
-          value: 16,
-          hide: true
-        },
-        {
-          name: "较慢",
-          value: 14,
-          hide: true
-        },
-        {
           name: "适中",
-          value: 12
+          value: 14
         },
         {
           name: "较快",
@@ -1147,18 +1511,8 @@ class Setting {
           hide: true
         },
         {
-          name: "较快",
-          value: 8,
-          hide: true
-        },
-        {
-          name: "较快",
-          value: 6,
-          hide: true
-        },
-        {
           name: "极快",
-          value: 4
+          value: 6
         }
       ],
       ...this.option.SPEED
@@ -1317,19 +1671,20 @@ class Setting {
     this.slider.margin = this.createSlider({
       ...this.MARGIN,
       container: this.template.$marginSlider,
+      // 确保这个在 createTemplate() 中已正确 query
       findIndex: () => {
         return this.MARGIN.steps.findIndex(
-          (item) => item.value[0] === this.option.margin[0] && item.value[1] === this.option.margin[1]
+          (item) => JSON.stringify(item.value) === JSON.stringify(this.option.margin)
         );
       },
       onChange: (index) => {
-        const margin = this.MARGIN.steps[index];
-        if (!margin)
-          return;
+        const marginStep = this.MARGIN.steps[index];
+        if (!marginStep) return;
         const { $marginValue } = this.template;
-        $marginValue.textContent = margin.name;
+        if ($marginValue) $marginValue.textContent = marginStep.name;
         this.danmuku.config({
-          margin: margin.value
+          margin: marginStep.value
+          // 必须是数组 [10, "50%"] 或 [10, 10]
         });
       }
     });
@@ -1366,20 +1721,20 @@ class Setting {
         });
       }
     });
-    this.slider.sparsity = this.createSlider({
-      ...this.SPARSITY,
-      container: this.query(".apd-config-sparsity .apd-slider"),
-      // 或 this.template.$sparsitySlider
+    this.slider.density = this.createSlider({
+      ...this.DENSITY,
+      container: this.query(".apd-config-density .apd-slider"),
+      // class 可以暂时不改，或改成 apd-config-density
       findIndex: () => {
-        return this.SPARSITY.steps.findIndex((item) => item.value === this.option.sparsity);
+        return this.DENSITY.steps.findIndex((item) => item.value === this.option.density);
       },
       onChange: (index) => {
-        const step = this.SPARSITY.steps[index];
+        const step = this.DENSITY.steps[index];
         if (!step) return;
-        const valueEl = this.query(".apd-config-sparsity .apd-value");
+        const valueEl = this.query(".apd-config-density .apd-value");
         if (valueEl) valueEl.textContent = step.name;
         this.danmuku.config({
-          sparsity: step.value
+          density: step.value
         });
       }
     });
@@ -1552,7 +1907,7 @@ class Setting {
     this.slider.margin.reset();
     this.slider.fontSize.reset();
     this.slider.speed.reset();
-    if (this.slider.sparsity) this.slider.sparsity.reset();
+    this.slider.density.reset();
     this.setData("danmukuVisible", this.option.visible);
     this.setData("danmukuMode", this.option.mode);
     this.setData("danmukuColor", this.option.color);
