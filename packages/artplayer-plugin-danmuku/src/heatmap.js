@@ -118,21 +118,42 @@ export default function heatmap(art, danmuku, option) {
           points.push([svg.w, lastY])
         }
 
-        let yMin = Infinity
-        let yMax = -Infinity
+        // ── 底座 + 波浪 归一化 ──
+        // 1. 分别统计热区和冷区的密度范围
+        let hotMin = 60, hotMax = 60
+        let coldMin = 0, coldMax = 60
         for (let i = 0; i < points.length; i++) {
-          const val = points[i][1]
-          if (val < yMin) yMin = val
-          if (val > yMax) yMax = val
+          const count = points[i][1]
+          if (count >= 60) {
+            if (count > hotMax) hotMax = count
+          }
+          else {
+            if (count < coldMin) coldMin = count
+            if (count > coldMax) coldMax = count
+          }
         }
-        const yMid = (yMin + yMax) / 2
 
+        // 2. 基准线 + 各区域最大振幅
+        const baseline = svg.h * 0.5
+        const hotMaxH = svg.h * 0.25
+        const coldMaxH = svg.h * 0.25
+
+        // 3. 分别归一化：每个区域的波动填满各自的振幅空间
         for (let i = 0; i < points.length; i++) {
-          const point = points[i]
-          const y = point[1]
-          point[1] = y * (y > yMid ? 1 + options.scale : 1 - options.scale) + options.minHeight
+          const count = points[i][1]
+          if (count >= 60) {
+            // 热区：[hotMin, hotMax] → [baseline, baseline + hotMaxH]
+            const ratio = hotMax > hotMin ? (count - hotMin) / (hotMax - hotMin) : 0.5
+            points[i][1] = baseline + ratio * hotMaxH
+          }
+          else {
+            // 冷区：[coldMin, coldMax] → [baseline - coldMaxH, baseline]
+            const ratio = coldMax > coldMin ? (count - coldMin) / (coldMax - coldMin) : 0.5
+            points[i][1] = baseline - coldMaxH + ratio * coldMaxH
+          }
         }
 
+        // ── 贝塞尔曲线 ──
         const controlPoint = (current, previous, next, reverse) => {
           const p = previous || current
           const n = next || current
@@ -148,13 +169,13 @@ export default function heatmap(art, danmuku, option) {
         const bezierCommand = (point, i, a) => {
             const cps = controlPoint(a[i - 1], a[i - 2], point)
             const cpe = controlPoint(point, a[i - 1], a[i + 1], true)
-            // const close = i === a.length - 1 ? ' z' : ''  <-- 这行删掉
-            return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}` // <-- 移除 ${close}
+            return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}`
         }
 
+        // 转换为 SVG 坐标：height → y（从底部算起的高度 → SVG 的 y 坐标）
         const pointsPositions = points.map((e) => {
           const x = lib.map(e[0], options.xMin, options.xMax, 0, svg.w)
-          const y = lib.map(e[1], options.yMin, options.yMax, svg.h, 0)
+          const y = svg.h - e[1]
           return [x, y]
         })
 
@@ -166,22 +187,18 @@ export default function heatmap(art, danmuku, option) {
         '',
         ) + ` L ${svg.w},${svg.h} z`;
 
-        // 核心修改点：
-        // 1. 彻底移除内部多余带 top: -100px 的 div 包裹层，直接把 SVG 塞进容器，避免双重 top 错位！
-        // 2. preserveAspectRatio="none" 确保 SVG 撑满容器，让热力图完美“往下贴死进度条”。
-        // 3. 在 SVG 标签上增加 opacity 样式，控制整个热力图图层半透明。
         $heatmap.innerHTML = `
-          <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block; opacity: 0.45;">
-              <defs>
-                  <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1"></stop>
-                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1" id="heatmap-start"></stop>
-                      <stop offset="0%" style="stop-color:#fff;stop-opacity:1" id="heatmap-stop"></stop>
-                      <stop offset="100%" style="stop-color:#fff;stop-opacity:1"></stop>
-                  </linearGradient>
-              </defs>
-              <path fill="url(#heatmap-solids)" d="${pathD}"></path>
-          </svg>
+        <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;">
+            <defs>
+                <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:0.4"></stop>
+                    <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:0.4" id="heatmap-start"></stop>
+                    <stop offset="0%" style="stop-color:#fff;stop-opacity:0.25" id="heatmap-stop"></stop>
+                    <stop offset="100%" style="stop-color:#fff;stop-opacity:0.25"></stop>
+                </linearGradient>
+            </defs>
+            <path fill="url(#heatmap-solids)" d="${pathD}"></path>
+        </svg>
         `
 
         $start = query('#heatmap-start', $heatmap)

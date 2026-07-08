@@ -1161,18 +1161,29 @@ function heatmap(art, danmuku, option) {
         if (lastX !== svg.w) {
           points.push([svg.w, lastY]);
         }
-        let yMin = Infinity;
-        let yMax = -Infinity;
+        let hotMin = 60, hotMax = 60;
+        let coldMin = 0, coldMax = 60;
         for (let i = 0; i < points.length; i++) {
-          const val = points[i][1];
-          if (val < yMin) yMin = val;
-          if (val > yMax) yMax = val;
+          const count = points[i][1];
+          if (count >= 60) {
+            if (count > hotMax) hotMax = count;
+          } else {
+            if (count < coldMin) coldMin = count;
+            if (count > coldMax) coldMax = count;
+          }
         }
-        const yMid = (yMin + yMax) / 2;
+        const baseline = svg.h * 0.5;
+        const hotMaxH = svg.h * 0.25;
+        const coldMaxH = svg.h * 0.25;
         for (let i = 0; i < points.length; i++) {
-          const point = points[i];
-          const y = point[1];
-          point[1] = y * (y > yMid ? 1 + options.scale : 1 - options.scale) + options.minHeight;
+          const count = points[i][1];
+          if (count >= 60) {
+            const ratio = hotMax > hotMin ? (count - hotMin) / (hotMax - hotMin) : 0.5;
+            points[i][1] = baseline + ratio * hotMaxH;
+          } else {
+            const ratio = coldMax > coldMin ? (count - coldMin) / (coldMax - coldMin) : 0.5;
+            points[i][1] = baseline - coldMaxH + ratio * coldMaxH;
+          }
         }
         const controlPoint = (current, previous, next, reverse) => {
           const p = previous || current;
@@ -1192,7 +1203,7 @@ function heatmap(art, danmuku, option) {
         };
         const pointsPositions = points.map((e) => {
           const x = lib.map(e[0], options.xMin, options.xMax, 0, svg.w);
-          const y = lib.map(e[1], options.yMin, options.yMax, svg.h, 0);
+          const y = svg.h - e[1];
           return [x, y];
         });
         const pathD = pointsPositions.reduce(
@@ -1200,17 +1211,17 @@ function heatmap(art, danmuku, option) {
           ""
         ) + ` L ${svg.w},${svg.h} z`;
         $heatmap.innerHTML = `
-          <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block; opacity: 0.45;">
-              <defs>
-                  <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1"></stop>
-                      <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:1" id="heatmap-start"></stop>
-                      <stop offset="0%" style="stop-color:#fff;stop-opacity:1" id="heatmap-stop"></stop>
-                      <stop offset="100%" style="stop-color:#fff;stop-opacity:1"></stop>
-                  </linearGradient>
-              </defs>
-              <path fill="url(#heatmap-solids)" d="${pathD}"></path>
-          </svg>
+        <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;">
+            <defs>
+                <linearGradient id="heatmap-solids" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:0.4"></stop>
+                    <stop offset="0%" style="stop-color:var(--art-theme);stop-opacity:0.4" id="heatmap-start"></stop>
+                    <stop offset="0%" style="stop-color:#fff;stop-opacity:0.25" id="heatmap-stop"></stop>
+                    <stop offset="100%" style="stop-color:#fff;stop-opacity:0.25"></stop>
+                </linearGradient>
+            </defs>
+            <path fill="url(#heatmap-solids)" d="${pathD}"></path>
+        </svg>
         `;
         $start = query("#heatmap-start", $heatmap);
         $stop = query("#heatmap-stop", $heatmap);
