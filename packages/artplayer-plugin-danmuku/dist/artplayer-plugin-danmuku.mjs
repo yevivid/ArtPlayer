@@ -368,6 +368,11 @@ function WorkerWrapper(options) {
     );
   }
 }
+function debug(...args) {
+}
+function log(...args) {
+  console.log("[Danmuku]", ...args);
+}
 class Danmuku {
   constructor(art, option) {
     const { constructor, template } = art;
@@ -605,7 +610,7 @@ class Danmuku {
       if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu);
         if (result.length <= 2) {
-          console.log("[Danmuku] readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
+          debug("readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
         }
       }
     });
@@ -660,7 +665,7 @@ class Danmuku {
         danmus = target;
       }
       errorHandle(Array.isArray(danmus), "Danmuku need return an array as result");
-      console.log("[Danmuku] 原始弹幕数量:", danmus.length);
+      debug("原始弹幕数量:", danmus.length);
       const preprocessor = this.option.preprocess ? createPreprocessor() : null;
       if (preprocessor) {
         for (let i = 0; i < danmus.length; i++) {
@@ -681,7 +686,7 @@ class Danmuku {
             maxDist: this.option.mergeMaxDist,
             maxCosine: this.option.mergeMaxCosine
           });
-          console.log("[Danmuku] 合并:", before, "->", danmus.length);
+          log("弹幕合并:", before, "->", danmus.length);
         } catch (e) {
           console.error("[Danmuku] 合并失败:", e);
         }
@@ -697,7 +702,7 @@ class Danmuku {
         const danmu = danmus[index];
         await this.emit(danmu);
       }
-      console.log("[Danmuku] 最终队列数量:", this.queue.length);
+      debug("最终队列数量:", this.queue.length);
       this.art.emit("artplayerPluginDanmuku:loaded", this.queue);
     } catch (error) {
       this.art.emit("artplayerPluginDanmuku:error", error);
@@ -709,13 +714,13 @@ class Danmuku {
   async emit(danmu) {
     const { clamp } = this.utils;
     if (this.queue.length < 3) {
-      console.log("[Danmuku] emit 输入:", JSON.stringify({
+      debug("emit 输入:", {
         text: danmu.text,
         time: danmu.time,
         mode: danmu.mode,
         color: danmu.color,
         _mergeCount: danmu._mergeCount
-      }));
+      });
     }
     this.validator(danmu, {
       id: "?string",
@@ -866,14 +871,14 @@ class Danmuku {
         });
         const readys = this.readys;
         if (readys.length > 0) {
-          console.log("[Danmuku] readys 数量:", readys.length, "当前时间:", this.art.currentTime);
+          debug("readys 数量:", readys.length, "当前时间:", this.art.currentTime);
         }
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index];
           const state = await this.option.beforeVisible(danmu);
           if (state) {
             if (this.queue.length <= 5) {
-              console.log("[Danmuku] 即将显示:", { text: danmu.text, time: danmu.time });
+              debug("即将显示:", { text: danmu.text, time: danmu.time });
             }
             const { clientWidth, clientHeight } = this.$player;
             danmu.$ref = this.$ref;

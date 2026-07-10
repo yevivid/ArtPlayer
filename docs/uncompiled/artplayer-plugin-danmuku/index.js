@@ -597,9 +597,9 @@ var artplayerPluginDanmuku = (function() {
       this.filter("wait", (danmu) => {
         if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
           result.push(danmu);
-          if (result.length <= 2) {
-            console.log("[Danmuku] readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
-          }
+        //   if (result.length <= 2) {
+        //     console.log("[Danmuku] readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
+        //   }
         }
       });
       return result;
