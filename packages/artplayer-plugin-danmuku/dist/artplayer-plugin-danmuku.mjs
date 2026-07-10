@@ -1161,28 +1161,22 @@ function heatmap(art, danmuku, option) {
         if (lastX !== svg.w) {
           points.push([svg.w, lastY]);
         }
-        let hotMin = 60, hotMax = 60;
-        let coldMin = 0, coldMax = 60;
+        let hotMax = 60;
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1];
-          if (count >= 60) {
-            if (count > hotMax) hotMax = count;
-          } else {
-            if (count < coldMin) coldMin = count;
-            if (count > coldMax) coldMax = count;
-          }
+          if (count >= 60 && count > hotMax) hotMax = count;
         }
-        const baseline = svg.h * 0.5;
-        const hotMaxH = svg.h * 0.25;
-        const coldMaxH = svg.h * 0.25;
+        const baseline = svg.h * 0.45;
+        const coldScale = svg.h / 120;
+        const hotMaxH = svg.h * 0.35;
+        const logMax = Math.log(hotMax / 60) || 1;
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1];
           if (count >= 60) {
-            const ratio = hotMax > hotMin ? (count - hotMin) / (hotMax - hotMin) : 0.5;
-            points[i][1] = baseline + ratio * hotMaxH;
+            const logVal = Math.log(count / 60);
+            points[i][1] = baseline + logVal / logMax * hotMaxH;
           } else {
-            const ratio = coldMax > coldMin ? (count - coldMin) / (coldMax - coldMin) : 0.5;
-            points[i][1] = baseline - coldMaxH + ratio * coldMaxH;
+            points[i][1] = Math.max(options.minHeight, baseline - (60 - count) * coldScale);
           }
         }
         const controlPoint = (current, previous, next, reverse) => {

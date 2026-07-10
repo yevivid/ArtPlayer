@@ -119,37 +119,30 @@ export default function heatmap(art, danmuku, option) {
         }
 
         // ── 底座 + 波浪 归一化 ──
-        // 1. 分别统计热区和冷区的密度范围
-        let hotMin = 60, hotMax = 60
-        let coldMin = 0, coldMax = 60
+        // 1. 找热区（>=60）的最大弹幕数，作为顶部边界
+        let hotMax = 60
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1]
-          if (count >= 60) {
-            if (count > hotMax) hotMax = count
-          }
-          else {
-            if (count < coldMin) coldMin = count
-            if (count > coldMax) coldMax = count
-          }
+          if (count >= 60 && count > hotMax) hotMax = count
         }
 
-        // 2. 基准线 + 各区域最大振幅
-        const baseline = svg.h * 0.5
-        const hotMaxH = svg.h * 0.25
-        const coldMaxH = svg.h * 0.25
+        // 2. 基准线 = 60，顶部 = hotMax，在这个范围内取对数
+        const baseline = svg.h * 0.45
+        const coldScale = svg.h / 120
+        const hotMaxH = svg.h * 0.35
+        const logMax = Math.log(hotMax / 60) || 1
 
-        // 3. 分别归一化：每个区域的波动填满各自的振幅空间
+        // 3. 归一化
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1]
           if (count >= 60) {
-            // 热区：[hotMin, hotMax] → [baseline, baseline + hotMaxH]
-            const ratio = hotMax > hotMin ? (count - hotMin) / (hotMax - hotMin) : 0.5
-            points[i][1] = baseline + ratio * hotMaxH
+            // 热区：[60, hotMax] → [baseline, baseline + hotMaxH]，对数映射
+            const logVal = Math.log(count / 60)
+            points[i][1] = baseline + (logVal / logMax) * hotMaxH
           }
           else {
-            // 冷区：[coldMin, coldMax] → [baseline - coldMaxH, baseline]
-            const ratio = coldMax > coldMin ? (count - coldMin) / (coldMax - coldMin) : 0.5
-            points[i][1] = baseline - coldMaxH + ratio * coldMaxH
+            // 冷区：[0, 60] → [baseline - 60*coldScale, baseline]，线性映射
+            points[i][1] = Math.max(options.minHeight, baseline - (60 - count) * coldScale)
           }
         }
 
