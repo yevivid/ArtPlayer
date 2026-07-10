@@ -4,6 +4,17 @@ import { createPreprocessor } from './preprocess'
 import { initSimilarity } from './wasm/similarity'
 import DanmuWorker from './worker.js?worker&inline'
 
+// 调试开关
+const DEBUG = false
+function debug(...args) {
+  if (DEBUG) console.log('[Danmuku]', ...args)
+}
+
+// 始终输出的关键日志
+function log(...args) {
+  console.log('[Danmuku]', ...args)
+}
+
 export default class Danmuku {
   constructor(art, option) {
     const { constructor, template } = art
@@ -248,7 +259,7 @@ export default class Danmuku {
       if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu)
         if (result.length <= 2) {
-          console.log('[Danmuku] readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
+          debug('readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
         }
       }
     })
@@ -323,7 +334,7 @@ export default class Danmuku {
       }
 
       errorHandle(Array.isArray(danmus), 'Danmuku need return an array as result')
-      console.log('[Danmuku] 原始弹幕数量:', danmus.length)
+      debug('原始弹幕数量:', danmus.length)
 
       // 文本预处理：全角转半角、去尾部标点、压缩空格等
       const preprocessor = this.option.preprocess ? createPreprocessor() : null
@@ -348,10 +359,10 @@ export default class Danmuku {
             maxDist: this.option.mergeMaxDist,
             maxCosine: this.option.mergeMaxCosine,
           })
-          console.log('[Danmuku] 合并:', before, '->', danmus.length)
+          log('弹幕合并:', before, '->', danmus.length)
         }
         catch (e) {
-          console.error('[Danmuku] 合并失败:', e)
+          log('合并失败:', e)
         }
       }
 
@@ -370,7 +381,7 @@ export default class Danmuku {
         await this.emit(danmu)
       }
 
-      console.log('[Danmuku] 最终队列数量:', this.queue.length)
+      debug('最终队列数量:', this.queue.length)
       this.art.emit('artplayerPluginDanmuku:loaded', this.queue)
     }
     catch (error) {
@@ -387,13 +398,13 @@ export default class Danmuku {
 
     // 打印前3条合并后的弹幕结构
     if (this.queue.length < 3) {
-      console.log('[Danmuku] emit 输入:', JSON.stringify({
+      debug('emit 输入:', {
         text: danmu.text,
         time: danmu.time,
         mode: danmu.mode,
         color: danmu.color,
         _mergeCount: danmu._mergeCount,
-      }))
+      })
     }
 
     this.validator(danmu, {
@@ -596,7 +607,7 @@ export default class Danmuku {
         const readys = this.readys
 
         if (readys.length > 0) {
-          console.log('[Danmuku] readys 数量:', readys.length, '当前时间:', this.art.currentTime)
+          debug('readys 数量:', readys.length, '当前时间:', this.art.currentTime)
         }
 
         for (let index = 0; index < readys.length; index++) {
@@ -606,7 +617,7 @@ export default class Danmuku {
 
           if (state) {
             if (this.queue.length <= 5) {
-              console.log('[Danmuku] 即将显示:', { text: danmu.text, time: danmu.time })
+              debug('即将显示:', { text: danmu.text, time: danmu.time })
             }
             const { clientWidth, clientHeight } = this.$player
             danmu.$ref = this.$ref
