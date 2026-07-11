@@ -1,4 +1,5 @@
 import { bilibiliDanmuParseFromUrl } from './bilibili'
+import { scheduleHeroDanmuku } from './consensus-scheduler'
 import { mergeDanmuku } from './merge'
 import { createPreprocessor } from './preprocess'
 import { initSimilarity } from './wasm/similarity'
@@ -7,7 +8,8 @@ import DanmuWorker from './worker.js?worker&inline'
 // 调试开关
 const DEBUG = false
 function debug(...args) {
-  if (DEBUG) console.log('[Danmuku]', ...args)
+  if (DEBUG)
+    console.log('[Danmuku]', ...args)
 }
 
 // 始终输出的关键日志
@@ -235,6 +237,40 @@ export default class Danmuku {
     return Danmuku.option.fontSize
   }
 
+  // 英雄弹幕抢位：随机选轨道，清掉该轨道上的弹幕
+  kickOverlapping(heroDanmu) {
+    const { clientHeight } = this.$player
+    const heroHeight = heroDanmu.$ref.clientHeight
+    const maxTop = clientHeight - this.marginBottom
+    const trackHeight = Math.ceil(this.fontSize * 1.125) // 单条轨道高度
+
+    // 可用轨道数
+    const trackCount = Math.floor((maxTop - this.marginTop) / trackHeight)
+    // 英雄占几条轨道
+    const heroTracks = Math.ceil(heroHeight / trackHeight)
+    // 随机选一个起始轨道（确保英雄不超出底部）
+    const maxStart = Math.max(0, trackCount - heroTracks)
+    const startTrack = Math.floor(Math.random() * (maxStart + 1))
+
+    // 计算英雄占用的像素范围
+    const heroTop = this.marginTop + startTrack * trackHeight
+    const heroBottom = heroTop + heroHeight
+
+    // 踢掉这个范围内所有 mode=1 弹幕
+    this.filter('emit', (danmu) => {
+      if (danmu.mode === 1 && danmu !== heroDanmu) {
+        const dTop = danmu.top ?? 0
+        const dBottom = dTop + (danmu.$ref?.clientHeight || 0)
+        if (heroTop < dBottom && heroBottom > dTop) {
+          danmu.$ref.style.visibility = 'hidden'
+          this.makeWait(danmu)
+        }
+      }
+    })
+
+    return heroTop
+  }
+
   // 获取弹幕DOM节点
   get $ref() {
     const $ref = this.$refs.pop() || document.createElement('div')
@@ -256,7 +292,8 @@ export default class Danmuku {
 
     // 有的是wait状态：符合时间范围的弹幕
     this.filter('wait', (danmu) => {
-      if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
+      const window = danmu._isHero ? 1.0 : 0.1
+      if (currentTime + window >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu)
         if (result.length <= 2) {
           debug('readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
@@ -274,7 +311,7 @@ export default class Danmuku {
     const clientLeft = this.getLeft(this.$player)
 
     this.filter('emit', (danmu) => {
-      const top = danmu.$ref.offsetTop
+      const top = danmu.top ?? danmu.$ref.offsetTop
       const left = this.getLeft(danmu.$ref) - clientLeft
       const height = danmu.$ref.clientHeight
       const width = danmu.$ref.clientWidth
@@ -364,6 +401,11 @@ export default class Danmuku {
         catch (e) {
           log('合并失败:', e)
         }
+      }
+
+      // 英雄弹幕调度：标记英雄 + 降级其余
+      if (danmus.length > 0) {
+        scheduleHeroDanmuku(danmus, this.art.currentTime)
       }
 
       // 假如没有传入弹幕参数，则清空弹幕，否则追加弹幕
@@ -600,6 +642,7 @@ export default class Danmuku {
           danmu.$restTime -= emitTime
           danmu.$lastStartTime = Date.now()
           if (danmu.$restTime <= 0) {
+            danmu.top = undefined
             this.makeWait(danmu)
           }
         })
@@ -633,10 +676,19 @@ export default class Danmuku {
             this.$danmuku.appendChild(danmu.$ref)
 
             danmu.$ref.style.opacity = this.option.opacity
-            danmu.$ref.style.fontSize = `${this.fontSize}px`
             danmu.$ref.style.color = danmu.color
             danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null
             danmu.$ref.style.backgroundColor = danmu.border ? 'rgb(0 0 0 / 50%)' : null
+
+            // 英雄弹幕：放大字号 + 阴影
+            if (danmu._isHero) {
+              const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3)
+              danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`
+              danmu.$ref.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)'
+            }
+            else {
+              danmu.$ref.style.fontSize = `${this.fontSize}px`
+            }
 
             setStyles(danmu.$ref, danmu.style)
 
@@ -648,12 +700,12 @@ export default class Danmuku {
               danmu.$restTime = danmu.$restTime / 2
             }
 
-            // 速度抖动：10% 快、10% 慢、80% 正常
+            // 速度抖动
             const jitter = Math.random()
-            if (jitter < 0.1) {
+            if (jitter < 0.15) {
               danmu.$restTime *= 0.8
             }
-            else if (jitter > 0.9) {
+            else if (jitter > 0.85) {
               danmu.$restTime *= 1.2
             }
 
@@ -675,9 +727,16 @@ export default class Danmuku {
             })
 
             if (danmu.$ref) {
-              if (!this.isStop && top !== undefined) {
+              // 英雄弹幕：自己算轨道，踢人后直接放
+              let finalTop = top
+              if (danmu._isHero) {
+                finalTop = this.kickOverlapping(danmu)
+              }
+
+              if (!this.isStop && finalTop !== undefined) {
                 this.setState(danmu, 'emit')
-                danmu.$ref.style.top = `${top}px`
+                danmu.top = finalTop
+                danmu.$ref.style.top = `${finalTop}px`
                 danmu.$ref.style.visibility = 'visible'
                 danmu.$ref.dataset.mode = danmu.mode
                 danmu.$ref.dataset.id = danmu.id || ''

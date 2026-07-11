@@ -1,7 +1,8 @@
 import { beginChunk, detectSimilarity } from './wasm/similarity'
 
 function selectMedianLength(strs) {
-  if (strs.length === 1) return strs[0]
+  if (strs.length === 1)
+    return strs[0]
   const sorted = [...strs].sort((a, b) => a.length - b.length)
   return sorted[Math.floor(sorted.length / 2)]
 }
@@ -25,7 +26,8 @@ function processChunk(chunkItems, opts) {
 
     while (indexL < indexR) {
       const peeked = storage[indexL]
-      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS) break
+      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS)
+        break
       indexL++
     }
 
@@ -59,7 +61,8 @@ export function mergeDanmuku(danmuku, options = {}) {
     crossMode = true,
   } = options
 
-  if (!danmuku || danmuku.length === 0) return []
+  if (!danmuku || danmuku.length === 0)
+    return []
 
   const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0))
 
@@ -93,15 +96,25 @@ export function mergeDanmuku(danmuku, options = {}) {
       }
       let maxCount = 0
       for (const [, count] of textCounts) {
-        if (count > maxCount) maxCount = count
+        if (count > maxCount)
+          maxCount = count
       }
       const chosenText = selectMedianLength(
         [...textCounts.entries()]
           .filter(([, c]) => c === maxCount)
           .map(([t]) => t),
       )
+
+      // 时间取中位数
+      const times = cluster.items.map(d => d.time || 0).sort((a, b) => a - b)
+      const mid = Math.floor(times.length / 2)
+      const medianTime = times.length % 2 === 0
+        ? (times[mid - 1] + times[mid]) / 2
+        : times[mid]
+
       const repr = {
         ...cluster.items[0],
+        time: medianTime,
         text: chosenText,
         _mergeCount: cluster.items.length,
       }

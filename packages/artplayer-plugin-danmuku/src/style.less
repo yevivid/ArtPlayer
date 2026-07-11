@@ -16,11 +16,13 @@
 
   // 第 17-26 行，把 fill 改成 color
   .apd-icon {
-      cursor: pointer;
-      opacity: 0.75;
-      transition: all 0.2s ease;
-      color: #fff;  // 改这里
-      &:hover { opacity: 1; }
+    cursor: pointer;
+    opacity: 0.75;
+    transition: all 0.2s ease;
+    color: #fff; // 改这里
+    &:hover {
+      opacity: 1;
+    }
   }
 
   .apd-config {
@@ -466,6 +468,15 @@
 .art-danmuku-merge-mark {
   opacity: 0.6;
   font-size: 0.8em;
+}
+
+.art-danmuku [data-mode='0'] {
+  z-index: 10;
+}
+
+.art-danmuku [data-mode='1'],
+.art-danmuku [data-mode='2'] {
+  z-index: 5;
 }
 
 .generate-mode-styles(2);

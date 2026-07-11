@@ -80,6 +80,50 @@ function bilibiliDanmuParseFromUrl(url) {
     }
   });
 }
+const BUCKET_SIZE = 30;
+const HERO_THRESHOLD = 10;
+const DEMOTE_THRESHOLD = 5;
+function debug$1(...args) {
+}
+function log$1(...args) {
+  console.log("[Hero]", ...args);
+}
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return m > 0 ? `${m}m${s}s` : `${s}s`;
+}
+function scheduleHeroDanmuku(danmus, currentTime = 0) {
+  for (const d of danmus) {
+    d._isHero = false;
+  }
+  const buckets = /* @__PURE__ */ new Map();
+  for (const d of danmus) {
+    if ((d.time || 0) <= currentTime)
+      continue;
+    const id = Math.floor(d.time / BUCKET_SIZE);
+    if (!buckets.has(id))
+      buckets.set(id, []);
+    buckets.get(id).push(d);
+  }
+  debug$1(`开始调度 | 范围: ${formatTime(currentTime)} → 结尾 | 桶数: ${buckets.size}`);
+  for (const [, bucket] of buckets) {
+    const candidates = bucket.filter((d) => (d._mergeCount || 0) > HERO_THRESHOLD);
+    if (candidates.length === 0)
+      continue;
+    candidates.sort((a, b) => (b._mergeCount || 0) - (a._mergeCount || 0));
+    const top5 = candidates.slice(0, Math.min(5, candidates.length));
+    const hero = top5[Math.floor(Math.random() * top5.length)];
+    hero._isHero = true;
+    hero.mode = 1;
+    log$1(`🏆 ${hero.text} | ∑${hero._mergeCount} | 时间: ${formatTime(hero.time)} | 候选${candidates.length}条`);
+    for (const d of bucket) {
+      if (d !== hero && (d._mergeCount || 0) > DEMOTE_THRESHOLD) {
+        d.mode = 0;
+      }
+    }
+  }
+}
 let module$1 = null;
 let ptr_buf = null;
 const MAX_STRING_LEN = 16005;
@@ -114,7 +158,8 @@ function detectSimilarity(str, mode, indexL) {
   return { reason: REASON[reason] || "unknown", dist, idxDiff };
 }
 function selectMedianLength(strs) {
-  if (strs.length === 1) return strs[0];
+  if (strs.length === 1)
+    return strs[0];
   const sorted = [...strs].sort((a, b) => a.length - b.length);
   return sorted[Math.floor(sorted.length / 2)];
 }
@@ -132,7 +177,8 @@ function processChunk(chunkItems, opts) {
     const normalized = dm._normalizedText || dm.text;
     while (indexL < indexR) {
       const peeked = storage[indexL];
-      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS) break;
+      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS)
+        break;
       indexL++;
     }
     const sim = detectSimilarity(normalized, dm.mode || 0, indexL);
@@ -159,7 +205,8 @@ function mergeDanmuku(danmuku, options = {}) {
     trimPinyin = true,
     crossMode = true
   } = options;
-  if (!danmuku || danmuku.length === 0) return [];
+  if (!danmuku || danmuku.length === 0)
+    return [];
   const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0));
   const opts = { threshold, maxDist, maxCosine, trimPinyin, crossMode };
   const allClusters = [];
@@ -186,13 +233,18 @@ function mergeDanmuku(danmuku, options = {}) {
       }
       let maxCount = 0;
       for (const [, count] of textCounts) {
-        if (count > maxCount) maxCount = count;
+        if (count > maxCount)
+          maxCount = count;
       }
       const chosenText = selectMedianLength(
         [...textCounts.entries()].filter(([, c]) => c === maxCount).map(([t]) => t)
       );
+      const times = cluster.items.map((d) => d.time || 0).sort((a, b) => a - b);
+      const mid = Math.floor(times.length / 2);
+      const medianTime = times.length % 2 === 0 ? (times[mid - 1] + times[mid]) / 2 : times[mid];
       const repr = {
         ...cluster.items[0],
+        time: medianTime,
         text: chosenText,
         _mergeCount: cluster.items.length
       };
@@ -343,7 +395,7 @@ function createPreprocessor(options = {}) {
     return result;
   };
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    let danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop) return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    let danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop) return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop) return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop) return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (let [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      let sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      let virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type) return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    const danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop)\n          return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    const danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop)\n        return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop)\n          return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -593,6 +645,30 @@ class Danmuku {
     }
     return Danmuku.option.fontSize;
   }
+  // 英雄弹幕抢位：随机选轨道，清掉该轨道上的弹幕
+  kickOverlapping(heroDanmu) {
+    const { clientHeight } = this.$player;
+    const heroHeight = heroDanmu.$ref.clientHeight;
+    const maxTop = clientHeight - this.marginBottom;
+    const trackHeight = Math.ceil(this.fontSize * 1.125);
+    const trackCount = Math.floor((maxTop - this.marginTop) / trackHeight);
+    const heroTracks = Math.ceil(heroHeight / trackHeight);
+    const maxStart = Math.max(0, trackCount - heroTracks);
+    const startTrack = Math.floor(Math.random() * (maxStart + 1));
+    const heroTop = this.marginTop + startTrack * trackHeight;
+    const heroBottom = heroTop + heroHeight;
+    this.filter("emit", (danmu) => {
+      if (danmu.mode === 1 && danmu !== heroDanmu) {
+        const dTop = danmu.top ?? 0;
+        const dBottom = dTop + (danmu.$ref?.clientHeight || 0);
+        if (heroTop < dBottom && heroBottom > dTop) {
+          danmu.$ref.style.visibility = "hidden";
+          this.makeWait(danmu);
+        }
+      }
+    });
+    return heroTop;
+  }
   // 获取弹幕DOM节点
   get $ref() {
     const $ref = this.$refs.pop() || document.createElement("div");
@@ -607,7 +683,8 @@ class Danmuku {
     const { currentTime } = this.art;
     const result = [];
     this.filter("wait", (danmu) => {
-      if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
+      const window2 = danmu._isHero ? 1 : 0.1;
+      if (currentTime + window2 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu);
         if (result.length <= 2) {
           debug("readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
@@ -622,7 +699,7 @@ class Danmuku {
     const { clientWidth } = this.$player;
     const clientLeft = this.getLeft(this.$player);
     this.filter("emit", (danmu) => {
-      const top = danmu.$ref.offsetTop;
+      const top = danmu.top ?? danmu.$ref.offsetTop;
       const left = this.getLeft(danmu.$ref) - clientLeft;
       const height = danmu.$ref.clientHeight;
       const width = danmu.$ref.clientWidth;
@@ -688,8 +765,11 @@ class Danmuku {
           });
           log("弹幕合并:", before, "->", danmus.length);
         } catch (e) {
-          console.error("[Danmuku] 合并失败:", e);
+          log("合并失败:", e);
         }
+      }
+      if (danmus.length > 0) {
+        scheduleHeroDanmuku(danmus, this.art.currentTime);
       }
       if (danmuku === void 0) {
         this.reset();
@@ -866,6 +946,7 @@ class Danmuku {
           danmu.$restTime -= emitTime;
           danmu.$lastStartTime = Date.now();
           if (danmu.$restTime <= 0) {
+            danmu.top = void 0;
             this.makeWait(danmu);
           }
         });
@@ -891,10 +972,16 @@ class Danmuku {
             }
             this.$danmuku.appendChild(danmu.$ref);
             danmu.$ref.style.opacity = this.option.opacity;
-            danmu.$ref.style.fontSize = `${this.fontSize}px`;
             danmu.$ref.style.color = danmu.color;
             danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null;
             danmu.$ref.style.backgroundColor = danmu.border ? "rgb(0 0 0 / 50%)" : null;
+            if (danmu._isHero) {
+              const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3);
+              danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`;
+              danmu.$ref.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
+            } else {
+              danmu.$ref.style.fontSize = `${this.fontSize}px`;
+            }
             setStyles(danmu.$ref, danmu.style);
             danmu.$lastStartTime = Date.now();
             const distance = clientWidth + danmu.$ref.clientWidth;
@@ -903,9 +990,9 @@ class Danmuku {
               danmu.$restTime = danmu.$restTime / 2;
             }
             const jitter = Math.random();
-            if (jitter < 0.1) {
+            if (jitter < 0.15) {
               danmu.$restTime *= 0.8;
-            } else if (jitter > 0.9) {
+            } else if (jitter > 0.85) {
               danmu.$restTime *= 1.2;
             }
             const { result: top } = await this.postMessage({
@@ -924,9 +1011,14 @@ class Danmuku {
               marginTop: this.marginTop
             });
             if (danmu.$ref) {
-              if (!this.isStop && top !== void 0) {
+              let finalTop = top;
+              if (danmu._isHero) {
+                finalTop = this.kickOverlapping(danmu);
+              }
+              if (!this.isStop && finalTop !== void 0) {
                 this.setState(danmu, "emit");
-                danmu.$ref.style.top = `${top}px`;
+                danmu.top = finalTop;
+                danmu.$ref.style.top = `${finalTop}px`;
                 danmu.$ref.style.visibility = "visible";
                 danmu.$ref.dataset.mode = danmu.mode;
                 danmu.$ref.dataset.id = danmu.id || "";
@@ -1258,7 +1350,7 @@ const $mode_2_on = '<svg class="apd-icon apd-mode-2-on" xmlns:xlink="http://www.
 const $off = '<svg class="apd-icon apd-toggle-off" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="m8.085 4.891-.999-1.499a1.008 1.008 0 0 1 1.679-1.118l1.709 2.566c.54-.008 1.045-.012 1.515-.012h.13c.345 0 .707.003 1.088.007l1.862-2.59a1.008 1.008 0 0 1 1.637 1.177l-1.049 1.46c.788.02 1.631.046 2.53.078 1.958.069 3.468 1.6 3.74 3.507.088.613.13 2.158.16 3.276l.001.027c.01.333.017.63.025.856a.987.987 0 0 1-1.974.069c-.008-.23-.016-.539-.025-.881v-.002c-.028-1.103-.066-2.541-.142-3.065-.143-1.004-.895-1.78-1.854-1.813-2.444-.087-4.466-.13-6.064-.131-1.598 0-3.619.044-6.063.13a2.037 2.037 0 0 0-1.945 1.748c-.15 1.04-.225 2.341-.225 3.904 0 1.874.11 3.474.325 4.798.154.949.95 1.66 1.91 1.708a97.58 97.58 0 0 0 5.416.139.988.988 0 0 1 0 1.975c-2.196 0-3.61-.047-5.513-.141A4.012 4.012 0 0 1 2.197 17.7c-.236-1.446-.351-3.151-.351-5.116 0-1.64.08-3.035.245-4.184A4.013 4.013 0 0 1 5.92 4.96c.761-.027 1.483-.05 2.164-.069Zm4.436 4.707h-1.32v4.63h2.222v.848h-2.618v1.078h2.431a5.01 5.01 0 0 1 3.575-3.115V9.598h-1.276a8.59 8.59 0 0 0 .748-1.42l-1.089-.384a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.289h-3.2v.979h2.067v1.43H7.483l-.308 3.454h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.004c.285.02.551.04.818.04 1.001-.066 1.562-.418 1.694-1.056.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858H15.8Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902H15.8v.902h-1.254Zm3.517 10.594a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-.002-1.502a2.5 2.5 0 0 1-2.217-3.657l3.326 3.398a2.49 2.49 0 0 1-1.109.259Zm2.5-2.5c0 .42-.103.815-.286 1.162l-3.328-3.401a2.5 2.5 0 0 1 3.614 2.239Z" clip-rule="evenodd"></path></svg>\r\n\r\n';
 const $on = '<svg class="apd-icon apd-toggle-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="M11.989 4.828c-.47 0-.975.004-1.515.012l-1.71-2.566a1.008 1.008 0 0 0-1.678 1.118l.999 1.5c-.681.018-1.403.04-2.164.068a4.013 4.013 0 0 0-3.83 3.44c-.165 1.15-.245 2.545-.245 4.185 0 1.965.115 3.67.35 5.116a4.012 4.012 0 0 0 3.763 3.363l.906.046c1.205.063 1.808.095 3.607.095a.988.988 0 0 0 0-1.975c-1.758 0-2.339-.03-3.501-.092l-.915-.047a2.037 2.037 0 0 1-1.91-1.708c-.216-1.324-.325-2.924-.325-4.798 0-1.563.076-2.864.225-3.904.14-.977.96-1.713 1.945-1.747 2.444-.087 4.465-.13 6.063-.131 1.598 0 3.62.044 6.064.13.96.034 1.71.81 1.855 1.814.075.524.113 1.962.141 3.065v.002c.01.342.017.65.025.88a.987.987 0 1 0 1.974-.068c-.008-.226-.016-.523-.025-.856v-.027c-.03-1.118-.073-2.663-.16-3.276-.273-1.906-1.783-3.438-3.74-3.507-.9-.032-1.743-.058-2.531-.078l1.05-1.46a1.008 1.008 0 0 0-1.638-1.177l-1.862 2.59c-.38-.004-.744-.007-1.088-.007h-.13Zm.521 4.775h-1.32v4.631h2.222v.847h-2.618v1.078h2.618l.003.678c.36.026.714.163 1.01.407h.11v-1.085h2.694v-1.078h-2.695v-.847H16.8v-4.63h-1.276a8.59 8.59 0 0 0 .748-1.42L15.183 7.8a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.294h-3.2v.98H9.33v1.43H7.472l-.308 3.453h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.005c.285.02.551.04.818.04 1.001-.067 1.562-.419 1.694-1.057.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858h1.254Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902h1.254v.902h-1.254Z" clip-rule="evenodd"></path><path fill="currentColor" fill-rule="evenodd" d="M22.846 14.627a1 1 0 0 0-1.412.075l-5.091 5.703-2.216-2.275-.097-.086-.008-.005a1 1 0 0 0-1.322 1.493l2.963 3.041.093.083.007.005c.407.315 1 .27 1.354-.124l5.81-6.505.08-.102.005-.008a1 1 0 0 0-.166-1.295Z" clip-rule="evenodd"></path></svg>\r\n\r\n';
 const $style = '<svg class="apd-icon apd-style-icon" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 22 22" viewBox="0 0 22 22" width="36"  height="24" ><path d="M17 16H5c-.55 0-1 .45-1 1s.45 1 1 1h12c.55 0 1-.45 1-1s-.45-1-1-1zM6.96 15c.39 0 .74-.24.89-.6l.65-1.6h5l.66 1.6c.15.36.5.6.89.6.69 0 1.15-.71.88-1.34l-3.88-8.97C11.87 4.27 11.46 4 11 4s-.87.27-1.05.69l-3.88 8.97c-.27.63.2 1.34.89 1.34zM11 5.98 12.87 11H9.13L11 5.98z"></path></svg>\r\n\r\n';
-const style = ".artplayer-plugin-danmuku {\n  display: flex;\n  position: relative;\n  z-index: 99;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  height: 32px;\n  width: 100%;\n  color: #fff;\n  font-weight: 300;\n  flex-shrink: 0;\n  gap: 10px;\n}\n.artplayer-plugin-danmuku .apd-icon {\n  cursor: pointer;\n  opacity: 0.75;\n  transition: all 0.2s ease;\n  color: #fff;\n}\n.artplayer-plugin-danmuku .apd-icon:hover {\n  opacity: 1;\n}\n.artplayer-plugin-danmuku .apd-config {\n  display: flex;\n  position: relative;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 320px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel .apd-config-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-config:hover .apd-config-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-config-mode,\n.artplayer-plugin-danmuku .apd-config-slider,\n.artplayer-plugin-danmuku .apd-config-other,\n.artplayer-plugin-danmuku .apd-style-mode {\n  margin-bottom: 15px;\n}\n.artplayer-plugin-danmuku .apd-modes {\n  display: flex;\n  align-items: center;\n  margin-top: 5px;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode {\n  cursor: pointer;\n  text-align: center;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode:hover {\n  color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-config-slider {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n}\n.artplayer-plugin-danmuku .apd-config-slider .apd-value {\n  width: 32px;\n  text-align: right;\n}\n.artplayer-plugin-danmuku .apd-slider {\n  position: relative;\n  flex: 1;\n  display: flex;\n  height: 20px;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-line {\n  position: relative;\n  height: 2px;\n  width: 100%;\n  overflow: hidden;\n  border-radius: 3px;\n  background-color: rgba(255, 255, 255, 0.25);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points .apd-slider-point {\n  width: 2px;\n  height: 2px;\n  border-radius: 50%;\n  background-color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-progress {\n  width: 0%;\n  height: 100%;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-dot {\n  position: absolute;\n  transform: translateX(-6px);\n  left: 0%;\n  width: 12px;\n  height: 12px;\n  border-radius: 50%;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  position: absolute;\n  bottom: -12px;\n  width: calc(100% + 32px);\n  color: #777;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps .apd-slider-step {\n  flex-shrink: 0;\n  width: 36px;\n  text-align: center;\n  scale: 0.95;\n}\n.artplayer-plugin-danmuku .apd-config-other {\n  display: flex;\n  align-items: center;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-check-off,\n.artplayer-plugin-danmuku .apd-config-other .apd-check-on {\n  width: 16px;\n  height: 16px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other {\n  display: flex;\n  align-items: center;\n  cursor: pointer;\n  gap: 2px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other:hover {\n  color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-emitter {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  height: 100%;\n  background-color: rgba(255, 255, 255, 0.25);\n  border-radius: 5px;\n}\n.artplayer-plugin-danmuku .apd-style {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 200px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel .apd-style-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-style:hover .apd-style-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-colors {\n  display: flex;\n  flex-wrap: wrap;\n  margin-top: 5px;\n  gap: 8px;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color {\n  width: 16px;\n  height: 16px;\n  border-radius: 2px;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color.apd-active {\n  border: 1px solid black;\n  box-shadow: 0 0 0 1px #fff;\n}\n.artplayer-plugin-danmuku .apd-input {\n  outline: none;\n  height: 100%;\n  flex: 1;\n  min-width: 0;\n  width: auto;\n  border: none;\n  line-height: 1;\n  color: #fff;\n  background-color: transparent;\n}\n.artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-send {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  width: 60px;\n  flex-shrink: 0;\n  cursor: pointer;\n  text-shadow: none;\n  border-top-right-radius: 5px;\n  border-bottom-right-radius: 5px;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-send.apd-lock {\n  cursor: not-allowed;\n  color: #666;\n  background-color: #e7e7e7;\n}\n.art-controls-center .apd-emitter {\n  width: 260px;\n  flex: none;\n}\n.art-fullscreen .artplayer-plugin-danmuku,\n.art-fullscreen-web .artplayer-plugin-danmuku {\n  height: 38px;\n  gap: 16px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-on,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-on {\n  width: 28px;\n  height: 28px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-emitter,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-emitter {\n  width: 400px;\n  flex: none;\n}\n.art-video-player > .artplayer-plugin-danmuku {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: -40px;\n  padding: 0 10px;\n}\n.art-video-player:has(> .artplayer-plugin-danmuku) {\n  margin-bottom: 40px;\n}\n[data-danmuku-emitter='false'] .apd-emitter {\n  display: none !important;\n}\n[data-danmuku-emitter='false'] .art-controls-center .artplayer-plugin-danmuku {\n  justify-content: flex-end;\n  gap: 18px;\n}\n[data-danmuku-emitter='false'].art-fullscreen .art-controls-center .artplayer-plugin-danmuku,\n[data-danmuku-emitter='false'].art-fullscreen-web .art-controls-center .artplayer-plugin-danmuku {\n  gap: 24px;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-icon {\n  color: #333;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-emitter {\n  background-color: #f1f2f3;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input {\n  color: #000;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(0, 0, 0, 0.3);\n}\n[data-danmuku-visible='false'] .apd-toggle-off {\n  display: block;\n}\n[data-danmuku-visible='false'] .apd-toggle-on {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-off {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-on {\n  display: none;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-off {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-off {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-on {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-off {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-on {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-off {\n  display: none;\n}\n.art-danmuku-merge-mark {\n  opacity: 0.6;\n  font-size: 0.8em;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-off {\n  display: block;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-on {\n  display: none;\n}\n[data-danmuku-mode0='false'] .art-danmuku [data-mode='0'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-off {\n  display: none;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-on {\n  display: block;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-off {\n  display: block;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-on {\n  display: none;\n}\n[data-danmuku-mode1='false'] .art-danmuku [data-mode='1'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-off {\n  display: none;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-on {\n  display: block;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-off {\n  display: block;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-on {\n  display: none;\n}\n[data-danmuku-mode2='false'] .art-danmuku [data-mode='2'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-off {\n  display: none;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-on {\n  display: block;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n";
+const style = ".artplayer-plugin-danmuku {\n  display: flex;\n  position: relative;\n  z-index: 99;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  height: 32px;\n  width: 100%;\n  color: #fff;\n  font-weight: 300;\n  flex-shrink: 0;\n  gap: 10px;\n}\n.artplayer-plugin-danmuku .apd-icon {\n  cursor: pointer;\n  opacity: 0.75;\n  transition: all 0.2s ease;\n  color: #fff;\n}\n.artplayer-plugin-danmuku .apd-icon:hover {\n  opacity: 1;\n}\n.artplayer-plugin-danmuku .apd-config {\n  display: flex;\n  position: relative;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 320px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-config .apd-config-panel .apd-config-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-config:hover .apd-config-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-config-mode,\n.artplayer-plugin-danmuku .apd-config-slider,\n.artplayer-plugin-danmuku .apd-config-other,\n.artplayer-plugin-danmuku .apd-style-mode {\n  margin-bottom: 15px;\n}\n.artplayer-plugin-danmuku .apd-modes {\n  display: flex;\n  align-items: center;\n  margin-top: 5px;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode {\n  cursor: pointer;\n  text-align: center;\n}\n.artplayer-plugin-danmuku .apd-modes .apd-mode:hover {\n  color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-config-slider {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n}\n.artplayer-plugin-danmuku .apd-config-slider .apd-value {\n  width: 32px;\n  text-align: right;\n}\n.artplayer-plugin-danmuku .apd-slider {\n  position: relative;\n  flex: 1;\n  display: flex;\n  height: 20px;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-line {\n  position: relative;\n  height: 2px;\n  width: 100%;\n  overflow: hidden;\n  border-radius: 3px;\n  background-color: rgba(255, 255, 255, 0.25);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-points .apd-slider-point {\n  width: 2px;\n  height: 2px;\n  border-radius: 50%;\n  background-color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-progress {\n  width: 0%;\n  height: 100%;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-dot {\n  position: absolute;\n  transform: translateX(-6px);\n  left: 0%;\n  width: 12px;\n  height: 12px;\n  border-radius: 50%;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  position: absolute;\n  bottom: -12px;\n  width: calc(100% + 32px);\n  color: #777;\n}\n.artplayer-plugin-danmuku .apd-slider .apd-slider-steps .apd-slider-step {\n  flex-shrink: 0;\n  width: 36px;\n  text-align: center;\n  scale: 0.95;\n}\n.artplayer-plugin-danmuku .apd-config-other {\n  display: flex;\n  align-items: center;\n  gap: 20px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-check-off,\n.artplayer-plugin-danmuku .apd-config-other .apd-check-on {\n  width: 16px;\n  height: 16px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other {\n  display: flex;\n  align-items: center;\n  cursor: pointer;\n  gap: 2px;\n}\n.artplayer-plugin-danmuku .apd-config-other .apd-other:hover {\n  color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-emitter {\n  display: flex;\n  flex: 1;\n  align-items: center;\n  height: 100%;\n  background-color: rgba(255, 255, 255, 0.25);\n  border-radius: 5px;\n}\n.artplayer-plugin-danmuku .apd-style {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel {\n  position: absolute;\n  bottom: 24px;\n  left: 0;\n  width: 200px;\n  padding: 10px;\n  opacity: 0;\n  pointer-events: none;\n}\n.artplayer-plugin-danmuku .apd-style .apd-style-panel .apd-style-panel-inner {\n  width: 100%;\n  border-radius: 3px;\n  background-color: rgba(0, 0, 0, 0.85);\n  padding: 10px;\n}\n.artplayer-plugin-danmuku .apd-style:hover .apd-style-panel {\n  opacity: 100;\n  pointer-events: all;\n}\n.artplayer-plugin-danmuku .apd-colors {\n  display: flex;\n  flex-wrap: wrap;\n  margin-top: 5px;\n  gap: 8px;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color {\n  width: 16px;\n  height: 16px;\n  border-radius: 2px;\n  cursor: pointer;\n}\n.artplayer-plugin-danmuku .apd-colors .apd-color.apd-active {\n  border: 1px solid black;\n  box-shadow: 0 0 0 1px #fff;\n}\n.artplayer-plugin-danmuku .apd-input {\n  outline: none;\n  height: 100%;\n  flex: 1;\n  min-width: 0;\n  width: auto;\n  border: none;\n  line-height: 1;\n  color: #fff;\n  background-color: transparent;\n}\n.artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(255, 255, 255, 0.5);\n}\n.artplayer-plugin-danmuku .apd-send {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  height: 100%;\n  width: 60px;\n  flex-shrink: 0;\n  cursor: pointer;\n  text-shadow: none;\n  border-top-right-radius: 5px;\n  border-bottom-right-radius: 5px;\n  background-color: var(--apd-highlight, #00a1d6);\n}\n.artplayer-plugin-danmuku .apd-send.apd-lock {\n  cursor: not-allowed;\n  color: #666;\n  background-color: #e7e7e7;\n}\n.art-controls-center .apd-emitter {\n  width: 260px;\n  flex: none;\n}\n.art-fullscreen .artplayer-plugin-danmuku,\n.art-fullscreen-web .artplayer-plugin-danmuku {\n  height: 38px;\n  gap: 16px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-config-icon,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-off,\n.art-fullscreen .artplayer-plugin-danmuku .apd-toggle-on,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-toggle-on {\n  width: 28px;\n  height: 28px;\n}\n.art-fullscreen .artplayer-plugin-danmuku .apd-emitter,\n.art-fullscreen-web .artplayer-plugin-danmuku .apd-emitter {\n  width: 400px;\n  flex: none;\n}\n.art-video-player > .artplayer-plugin-danmuku {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: -40px;\n  padding: 0 10px;\n}\n.art-video-player:has(> .artplayer-plugin-danmuku) {\n  margin-bottom: 40px;\n}\n[data-danmuku-emitter='false'] .apd-emitter {\n  display: none !important;\n}\n[data-danmuku-emitter='false'] .art-controls-center .artplayer-plugin-danmuku {\n  justify-content: flex-end;\n  gap: 18px;\n}\n[data-danmuku-emitter='false'].art-fullscreen .art-controls-center .artplayer-plugin-danmuku,\n[data-danmuku-emitter='false'].art-fullscreen-web .art-controls-center .artplayer-plugin-danmuku {\n  gap: 24px;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-icon {\n  color: #333;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-emitter {\n  background-color: #f1f2f3;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input {\n  color: #000;\n}\n[data-danmuku-theme='light'] > .artplayer-plugin-danmuku .apd-input::placeholder {\n  color: rgba(0, 0, 0, 0.3);\n}\n[data-danmuku-visible='false'] .apd-toggle-off {\n  display: block;\n}\n[data-danmuku-visible='false'] .apd-toggle-on {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-off {\n  display: none;\n}\n[data-danmuku-visible='true'] .apd-toggle-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-on {\n  display: none;\n}\n[data-danmuku-anti-overlap='false'] .apd-anti-overlap .apd-check-off {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-on {\n  display: block;\n}\n[data-danmuku-anti-overlap='true'] .apd-anti-overlap .apd-check-off {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-on {\n  display: none;\n}\n[data-danmuku-sync-video='false'] .apd-sync-video .apd-check-off {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-on {\n  display: block;\n}\n[data-danmuku-sync-video='true'] .apd-sync-video .apd-check-off {\n  display: none;\n}\n.art-danmuku-merge-mark {\n  opacity: 0.6;\n  font-size: 0.8em;\n}\n.art-danmuku [data-mode='0'] {\n  z-index: 10;\n}\n.art-danmuku [data-mode='1'],\n.art-danmuku [data-mode='2'] {\n  z-index: 5;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-off {\n  display: block;\n}\n[data-danmuku-mode0='false'] .apd-config-mode .apd-mode-0-on {\n  display: none;\n}\n[data-danmuku-mode0='false'] .art-danmuku [data-mode='0'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-off {\n  display: none;\n}\n[data-danmuku-mode0='true'] .apd-config-mode .apd-mode-0-on {\n  display: block;\n}\n[data-danmuku-mode='0'] .apd-style-mode [data-mode='0'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-off {\n  display: block;\n}\n[data-danmuku-mode1='false'] .apd-config-mode .apd-mode-1-on {\n  display: none;\n}\n[data-danmuku-mode1='false'] .art-danmuku [data-mode='1'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-off {\n  display: none;\n}\n[data-danmuku-mode1='true'] .apd-config-mode .apd-mode-1-on {\n  display: block;\n}\n[data-danmuku-mode='1'] .apd-style-mode [data-mode='1'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-off {\n  display: block;\n}\n[data-danmuku-mode2='false'] .apd-config-mode .apd-mode-2-on {\n  display: none;\n}\n[data-danmuku-mode2='false'] .art-danmuku [data-mode='2'] {\n  opacity: 0 !important;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-off {\n  display: none;\n}\n[data-danmuku-mode2='true'] .apd-config-mode .apd-mode-2-on {\n  display: block;\n}\n[data-danmuku-mode='2'] .apd-style-mode [data-mode='2'] {\n  color: var(--apd-highlight, #00a1d6);\n}\n";
 class Setting {
   constructor(art, danmuku) {
     this.art = art;
