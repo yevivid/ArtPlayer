@@ -14,78 +14,32 @@ function getDanmuTop({
 
   // ====================== 固定模式 1 (顶部) ======================
   if (target.mode === 1) {
-    // 【修改】：提前过滤掉因为修改 margin 而被挤出合法区域的历史旧弹幕
-    const danmus = visibles
+    const trackHeight = Math.ceil(target.height)
+
+    // 收集所有被占用的轨道
+    const occupiedTracks = new Set()
+    const visibleFixed = visibles
       .filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop)
-      .sort((a, b) => a.top - b.top)
+    visibleFixed.forEach((item) => {
+      const startTrack = Math.round((item.top - marginTop) / trackHeight)
+      const tracks = Math.ceil(item.height / trackHeight)
+      for (let t = startTrack; t < startTrack + tracks; t++) {
+        occupiedTracks.add(t)
+      }
+    })
 
-    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))
-
-    if (danmus.length === 0) {
-      if (marginTop + target.height <= maxTop)
-        return marginTop
-      return undefined
-    }
-
-    if (danmus[0].top - marginTop >= target.height + verticalGap) {
-      return marginTop
-    }
-
-    for (let i = 1; i < danmus.length; i++) {
-      const prevBottom = danmus[i - 1].top + danmus[i - 1].height
-      if (danmus[i].top - prevBottom >= target.height + verticalGap) {
-        if (prevBottom + target.height <= maxTop)
-          return prevBottom
+    // 收集所有空闲轨道，随机选一条
+    const maxTrack = Math.floor((maxTop - marginTop) / trackHeight)
+    const availableTracks = []
+    for (let t = 0; t <= maxTrack; t++) {
+      if (!occupiedTracks.has(t)) {
+        const top = marginTop + t * trackHeight
+        if (top + target.height <= maxTop)
+          availableTracks.push(top)
       }
     }
-
-    const last = danmus[danmus.length - 1]
-    if (last.top + last.height + verticalGap + target.height <= maxTop) {
-      return last.top + last.height + verticalGap
-    }
-    return undefined
-  }
-
-  // ====================== 固定模式 2 (底部) ======================
-  if (target.mode === 2) {
-    // 【修改】：提前过滤越界弹幕
-    const danmus = visibles
-      .filter(item => item.mode === 2 && item.top < maxTop && (item.top + item.height) > marginTop)
-      .sort((a, b) => a.top - b.top) // 从上到下排序
-
-    const verticalGap = Math.round(target.height * (0.8 + minGapRatio))
-
-    if (danmus.length === 0) {
-      if (maxTop - target.height >= marginTop)
-        return maxTop - target.height
-      return undefined
-    }
-
-    // 优先排在最底下
-    const last = danmus[danmus.length - 1]
-    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {
-      return maxTop - target.height
-    }
-
-    // 检查中间的空隙 (从下往上遍历，确保底部堆叠紧密)
-    for (let i = danmus.length - 1; i > 0; i--) {
-      const currentTop = danmus[i].top
-      const prevBottom = danmus[i - 1].top + danmus[i - 1].height
-      if (currentTop - prevBottom >= target.height + verticalGap) {
-        const expectedTop = currentTop - verticalGap - target.height
-        // 严格护栏：不能顶破天花板
-        if (expectedTop >= marginTop)
-          return expectedTop
-      }
-    }
-
-    // 实在不行，排在最顶层那条的上方
-    const first = danmus[0]
-    const expectedTop = first.top - verticalGap - target.height
-    if (expectedTop >= marginTop) {
-      return expectedTop
-    }
-
+    if (availableTracks.length > 0)
+      return availableTracks[Math.floor(Math.random() * availableTracks.length)]
     return undefined
   }
 

@@ -11,7 +11,6 @@ function getMode(key) {
     case 3:
       return 0;
     case 4:
-      return 2;
     case 5:
       return 1;
     default:
@@ -395,7 +394,7 @@ function createPreprocessor(options = {}) {
     return result;
   };
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    const danmus = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    if (danmus[0].top - marginTop >= target.height + verticalGap) {\n      return marginTop;\n    }\n    for (let i = 1; i < danmus.length; i++) {\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (danmus[i].top - prevBottom >= target.height + verticalGap) {\n        if (prevBottom + target.height <= maxTop)\n          return prevBottom;\n      }\n    }\n    const last = danmus[danmus.length - 1];\n    if (last.top + last.height + verticalGap + target.height <= maxTop) {\n      return last.top + last.height + verticalGap;\n    }\n    return void 0;\n  }\n  if (target.mode === 2) {\n    const danmus = visibles.filter((item) => item.mode === 2 && item.top < maxTop && item.top + item.height > marginTop).sort((a, b) => a.top - b.top);\n    const verticalGap = Math.round(target.height * (0.8 + minGapRatio));\n    if (danmus.length === 0) {\n      if (maxTop - target.height >= marginTop)\n        return maxTop - target.height;\n      return void 0;\n    }\n    const last = danmus[danmus.length - 1];\n    if (maxTop - (last.top + last.height) >= target.height + verticalGap) {\n      return maxTop - target.height;\n    }\n    for (let i = danmus.length - 1; i > 0; i--) {\n      const currentTop = danmus[i].top;\n      const prevBottom = danmus[i - 1].top + danmus[i - 1].height;\n      if (currentTop - prevBottom >= target.height + verticalGap) {\n        const expectedTop2 = currentTop - verticalGap - target.height;\n        if (expectedTop2 >= marginTop)\n          return expectedTop2;\n      }\n    }\n    const first = danmus[0];\n    const expectedTop = first.top - verticalGap - target.height;\n    if (expectedTop >= marginTop) {\n      return expectedTop;\n    }\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  if (target.mode === 1) {\n    const trackHeight = Math.ceil(target.height);\n    const occupiedTracks = /* @__PURE__ */ new Set();\n    const visibleFixed = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop);\n    visibleFixed.forEach((item) => {\n      const startTrack = Math.round((item.top - marginTop) / trackHeight);\n      const tracks = Math.ceil(item.height / trackHeight);\n      for (let t = startTrack; t < startTrack + tracks; t++) {\n        occupiedTracks.add(t);\n      }\n    });\n    const maxTrack = Math.floor((maxTop - marginTop) / trackHeight);\n    const availableTracks = [];\n    for (let t = 0; t <= maxTrack; t++) {\n      if (!occupiedTracks.has(t)) {\n        const top = marginTop + t * trackHeight;\n        if (top + target.height <= maxTop)\n          availableTracks.push(top);\n      }\n    }\n    if (availableTracks.length > 0)\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -440,10 +439,18 @@ class Danmuku {
     this.timer = null;
     this.index = 0;
     this.wasmReady = null;
+    this._pendingMessages = /* @__PURE__ */ new Map();
     this.option = Danmuku.option;
     this.states = { wait: [], ready: [], emit: [], stop: [] };
     this.config(option, true);
     this.worker = new WorkerWrapper();
+    this.worker.onmessage = (event) => {
+      const { data } = event;
+      if (data.id != null && this._pendingMessages.has(data.id)) {
+        this._pendingMessages.get(data.id)(data);
+        this._pendingMessages.delete(data.id);
+      }
+    };
     if (this.option.merge) {
       this.wasmReady = initSimilarity(this.option.mergeWasmUrl).catch((e) => {
         console.error("[Danmuku] WASM 初始化失败:", e);
@@ -480,8 +487,8 @@ class Danmuku {
       color: "#FFFFFF",
       // 默认弹幕颜色，可以被单独弹幕项覆盖
       mode: 0,
-      // 默认弹幕模式: 0: 滚动，1: 顶部，2: 底部
-      modes: [0, 1, 2],
+      // 默认弹幕模式: 0: 滚动，1: 顶部
+      modes: [0, 1],
       // 弹幕可见的模式
       fontSize: 25,
       // 弹幕字体大小，支持像素数字和百分比
@@ -808,7 +815,7 @@ class Danmuku {
       text: "string",
       // 弹幕文本
       mode: "?number",
-      // 弹幕模式: 0: 滚动，1: 顶部，2: 底部
+      // 弹幕模式: 0: 滚动，1: 顶部
       color: "?string",
       // 弹幕颜色
       time: "?number",
@@ -867,7 +874,7 @@ class Danmuku {
       return this;
     this.option = Object.assign({}, Danmuku.option, this.option, option);
     this.validator(this.option, Danmuku.scheme);
-    this.option.mode = clamp(this.option.mode, 0, 2);
+    this.option.mode = clamp(this.option.mode, 0, 1);
     this.option.speed = clamp(this.option.speed, 1, 20);
     this.option.opacity = clamp(this.option.opacity, 0, 1);
     this.option.lockTime = clamp(this.option.lockTime, 1, 60);
@@ -896,14 +903,10 @@ class Danmuku {
   // 复杂运算交给 Web Worker 处理
   postMessage(message = {}) {
     return new Promise((resolve) => {
-      message.id = Date.now();
+      const id = Date.now() + Math.random();
+      message.id = id;
+      this._pendingMessages.set(id, resolve);
       this.worker.postMessage(message);
-      this.worker.onmessage = (event) => {
-        const { data } = event;
-        if (data.id === message.id) {
-          resolve(data);
-        }
-      };
     });
   }
   // 根据状态获取弹幕
@@ -986,7 +989,7 @@ class Danmuku {
             danmu.$lastStartTime = Date.now();
             const distance = clientWidth + danmu.$ref.clientWidth;
             danmu.$restTime = distance / this.velocity;
-            if (danmu.mode === 1 || danmu.mode === 2) {
+            if (danmu.mode === 1) {
               danmu.$restTime = danmu.$restTime / 2;
             }
             const jitter = Math.random();
@@ -1058,7 +1061,7 @@ class Danmuku {
   // 重置正在显示的弹幕: stop/emit 状态的弹幕
   resize() {
     const fixCenter = (danmu) => {
-      if (danmu.mode === 1 || danmu.mode === 2) {
+      if (danmu.mode === 1) {
         danmu.$ref.style.left = "50%";
         danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`;
       }
@@ -1345,8 +1348,6 @@ const $mode_0_off = '<svg class="apd-icon apd-mode-0-off" xmlns:xlink="http://ww
 const $mode_0_on = '<svg class="apd-icon apd-mode-0-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 28 28" viewBox="0 0 28 28" width="28"  height="28" ><path d="M23 3H5a4 4 0 0 0-4 4v14a4 4 0 0 0 4 4h18a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4zM11 9h6a1 1 0 0 1 0 2h-6a1 1 0 0 1 0-2zm-3 2H6V9h2v2zm4 4h-2v-2h2v2zm9 0h-6a1 1 0 0 1 0-2h6a1 1 0 0 1 0 2z" fill="#FFFFFF"></path></svg>\r\n\r\n';
 const $mode_1_off = '<svg class="apd-icon apd-mode-1-off" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 28 28" viewBox="0 0 28 28" width="28"  height="28" ><path d="M23 15c1.487 0 2.866.464 4 1.255V7a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v14a4 4 0 0 0 4 4h11.674A7 7 0 0 1 23 15zm-4-8h2v2h-2V7zM9 9H7V7h2v2zm4 0h-2V7h2v2zm2-2h2v2h-2V7z" fill="currentColor"></path><path d="M26.536 18.464a5 5 0 0 0-7.071 0 5 5 0 0 0 0 7.071 5 5 0 1 0 7.071-7.071zm-5.657 5.657a3 3 0 0 1-.586-3.415l4.001 4.001a3 3 0 0 1-3.415-.586zm4.829-.827-4.001-4.001a3.002 3.002 0 0 1 4.001 4.001z" fill="currentColor"></path></svg>\r\n\r\n';
 const $mode_1_on = '<svg class="apd-icon apd-mode-1-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 28 28" viewBox="0 0 28 28" width="28"  height="28" ><path d="M23 3H5a4 4 0 0 0-4 4v14a4 4 0 0 0 4 4h18a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4zM9 9H7V7h2v2zm4 0h-2V7h2v2zm4 0h-2V7h2v2zm4 0h-2V7h2v2z" fill="#FFFFFF"></path></svg>\r\n\r\n';
-const $mode_2_off = '<svg class="apd-icon apd-mode-2-off" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 28 28" viewBox="0 0 28 28" width="28"  height="28" ><path d="M23 15c1.487 0 2.866.464 4 1.255V7a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v14a4 4 0 0 0 4 4h11.674A7 7 0 0 1 23 15zM9 21H7v-2h2v2zm4 0h-2v-2h2v2z" fill="currentColor"></path><path d="M26.536 18.464a5 5 0 0 0-7.071 0 5 5 0 0 0 0 7.071 5 5 0 1 0 7.071-7.071zm-5.657 5.657a3 3 0 0 1-.586-3.415l4.001 4.001a3 3 0 0 1-3.415-.586zm4.829-.827-4.001-4.001a3.002 3.002 0 0 1 4.001 4.001z" fill="currentColor"></path></svg>\r\n\r\n';
-const $mode_2_on = '<svg class="apd-icon apd-mode-2-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 28 28" viewBox="0 0 28 28" width="28"  height="28" ><path d="M23 3H5a4 4 0 0 0-4 4v14a4 4 0 0 0 4 4h18a4 4 0 0 0 4-4V7a4 4 0 0 0-4-4zM9 21H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z" fill="#FFFFFF"></path></svg>\r\n\r\n';
 const $off = '<svg class="apd-icon apd-toggle-off" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="m8.085 4.891-.999-1.499a1.008 1.008 0 0 1 1.679-1.118l1.709 2.566c.54-.008 1.045-.012 1.515-.012h.13c.345 0 .707.003 1.088.007l1.862-2.59a1.008 1.008 0 0 1 1.637 1.177l-1.049 1.46c.788.02 1.631.046 2.53.078 1.958.069 3.468 1.6 3.74 3.507.088.613.13 2.158.16 3.276l.001.027c.01.333.017.63.025.856a.987.987 0 0 1-1.974.069c-.008-.23-.016-.539-.025-.881v-.002c-.028-1.103-.066-2.541-.142-3.065-.143-1.004-.895-1.78-1.854-1.813-2.444-.087-4.466-.13-6.064-.131-1.598 0-3.619.044-6.063.13a2.037 2.037 0 0 0-1.945 1.748c-.15 1.04-.225 2.341-.225 3.904 0 1.874.11 3.474.325 4.798.154.949.95 1.66 1.91 1.708a97.58 97.58 0 0 0 5.416.139.988.988 0 0 1 0 1.975c-2.196 0-3.61-.047-5.513-.141A4.012 4.012 0 0 1 2.197 17.7c-.236-1.446-.351-3.151-.351-5.116 0-1.64.08-3.035.245-4.184A4.013 4.013 0 0 1 5.92 4.96c.761-.027 1.483-.05 2.164-.069Zm4.436 4.707h-1.32v4.63h2.222v.848h-2.618v1.078h2.431a5.01 5.01 0 0 1 3.575-3.115V9.598h-1.276a8.59 8.59 0 0 0 .748-1.42l-1.089-.384a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.289h-3.2v.979h2.067v1.43H7.483l-.308 3.454h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.004c.285.02.551.04.818.04 1.001-.066 1.562-.418 1.694-1.056.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858H15.8Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902H15.8v.902h-1.254Zm3.517 10.594a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-.002-1.502a2.5 2.5 0 0 1-2.217-3.657l3.326 3.398a2.49 2.49 0 0 1-1.109.259Zm2.5-2.5c0 .42-.103.815-.286 1.162l-3.328-3.401a2.5 2.5 0 0 1 3.614 2.239Z" clip-rule="evenodd"></path></svg>\r\n\r\n';
 const $on = '<svg class="apd-icon apd-toggle-on" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" data-pointer="none" viewBox="0 0 24 24" width="24"  height="24" ><path fill-rule="evenodd" d="M11.989 4.828c-.47 0-.975.004-1.515.012l-1.71-2.566a1.008 1.008 0 0 0-1.678 1.118l.999 1.5c-.681.018-1.403.04-2.164.068a4.013 4.013 0 0 0-3.83 3.44c-.165 1.15-.245 2.545-.245 4.185 0 1.965.115 3.67.35 5.116a4.012 4.012 0 0 0 3.763 3.363l.906.046c1.205.063 1.808.095 3.607.095a.988.988 0 0 0 0-1.975c-1.758 0-2.339-.03-3.501-.092l-.915-.047a2.037 2.037 0 0 1-1.91-1.708c-.216-1.324-.325-2.924-.325-4.798 0-1.563.076-2.864.225-3.904.14-.977.96-1.713 1.945-1.747 2.444-.087 4.465-.13 6.063-.131 1.598 0 3.62.044 6.064.13.96.034 1.71.81 1.855 1.814.075.524.113 1.962.141 3.065v.002c.01.342.017.65.025.88a.987.987 0 1 0 1.974-.068c-.008-.226-.016-.523-.025-.856v-.027c-.03-1.118-.073-2.663-.16-3.276-.273-1.906-1.783-3.438-3.74-3.507-.9-.032-1.743-.058-2.531-.078l1.05-1.46a1.008 1.008 0 0 0-1.638-1.177l-1.862 2.59c-.38-.004-.744-.007-1.088-.007h-.13Zm.521 4.775h-1.32v4.631h2.222v.847h-2.618v1.078h2.618l.003.678c.36.026.714.163 1.01.407h.11v-1.085h2.694v-1.078h-2.695v-.847H16.8v-4.63h-1.276a8.59 8.59 0 0 0 .748-1.42L15.183 7.8a14.232 14.232 0 0 1-.814 1.804h-1.518l.693-.308a8.862 8.862 0 0 0-.814-1.408l-1.045.352c.297.396.572.847.825 1.364Zm-4.18 3.564.154-1.485h1.98V8.294h-3.2v.98H9.33v1.43H7.472l-.308 3.453h2.277c0 1.166-.044 1.925-.12 2.277-.078.352-.386.528-.936.528-.308 0-.616-.022-.902-.055l.297 1.067.062.005c.285.02.551.04.818.04 1.001-.067 1.562-.419 1.694-1.057.11-.638.176-1.903.176-3.795h-2.2Zm7.458.11v-.858h-1.254v.858h1.254Zm-2.376-.858v.858h-1.199v-.858h1.2Zm-1.199-.946h1.2v-.902h-1.2v.902Zm2.321 0v-.902h1.254v.902h-1.254Z" clip-rule="evenodd"></path><path fill="currentColor" fill-rule="evenodd" d="M22.846 14.627a1 1 0 0 0-1.412.075l-5.091 5.703-2.216-2.275-.097-.086-.008-.005a1 1 0 0 0-1.322 1.493l2.963 3.041.093.083.007.005c.407.315 1 .27 1.354-.124l5.81-6.505.08-.102.005-.008a1 1 0 0 0-.166-1.295Z" clip-rule="evenodd"></path></svg>\r\n\r\n';
 const $style = '<svg class="apd-icon apd-style-icon" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" data-pointer="none" style="enable-background:new 0 0 22 22" viewBox="0 0 22 22" width="36"  height="24" ><path d="M17 16H5c-.55 0-1 .45-1 1s.45 1 1 1h12c.55 0 1-.45 1-1s-.45-1-1-1zM6.96 15c.39 0 .74-.24.89-.6l.65-1.6h5l.66 1.6c.15.36.5.6.89.6.69 0 1.15-.71.88-1.34l-3.88-8.97C11.87 4.27 11.46 4 11 4s-.87.27-1.05.69l-3.88 8.97c-.27.63.2 1.34.89 1.34zM11 5.98 12.87 11H9.13L11 5.98z"></path></svg>\r\n\r\n';
@@ -1423,8 +1424,6 @@ class Setting {
       $mode_0_on,
       $mode_1_off,
       $mode_1_on,
-      $mode_2_off,
-      $mode_2_on,
       $check_on,
       $check_off
     };
@@ -1455,10 +1454,6 @@ class Setting {
                                 <div data-mode="1" class="apd-mode">
                                     ${$mode_1_off}${$mode_1_on}
                                     <div>顶部</div>
-                                </div>
-                                <div data-mode="2" class="apd-mode">
-                                    ${$mode_2_off}${$mode_2_on}
-                                    <div>底部</div>
                                 </div>
                             </div>
                         </div>
@@ -1515,10 +1510,6 @@ class Setting {
                                     <div data-mode="1" class="apd-mode">
                                         ${$mode_1_on}
                                         <div>顶部</div>
-                                    </div>
-                                    <div data-mode="2" class="apd-mode">
-                                        ${$mode_2_on}
-                                        <div>底部</div>
                                     </div>
                                 </div>
                             </div>
@@ -2052,7 +2043,6 @@ class Setting {
     this.setData("danmukuColor", this.option.color);
     this.setData("danmukuMode0", this.option.modes.includes(0));
     this.setData("danmukuMode1", this.option.modes.includes(1));
-    this.setData("danmukuMode2", this.option.modes.includes(2));
     this.setData("danmukuAntiOverlap", this.option.antiOverlap);
     this.setData("danmukuSyncVideo", this.option.synchronousPlayback);
     this.setData("danmukuTheme", this.option.theme);

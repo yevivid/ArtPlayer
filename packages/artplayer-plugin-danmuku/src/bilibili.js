@@ -5,7 +5,6 @@ function getMode(key) {
     case 3:
       return 0
     case 4:
-      return 2
     case 5:
       return 1
     default:

@@ -5,8 +5,6 @@ import $mode_0_off from './img/mode_0_off.svg?raw'
 import $mode_0_on from './img/mode_0_on.svg?raw'
 import $mode_1_off from './img/mode_1_off.svg?raw'
 import $mode_1_on from './img/mode_1_on.svg?raw'
-import $mode_2_off from './img/mode_2_off.svg?raw'
-import $mode_2_on from './img/mode_2_on.svg?raw'
 import $off from './img/off.svg?raw'
 import $on from './img/on.svg?raw'
 import $style from './img/style.svg?raw'
@@ -94,8 +92,6 @@ export default class Setting {
       $mode_0_on,
       $mode_1_off,
       $mode_1_on,
-      $mode_2_off,
-      $mode_2_on,
       $check_on,
       $check_off,
     }
@@ -129,10 +125,6 @@ export default class Setting {
                                 <div data-mode="1" class="apd-mode">
                                     ${$mode_1_off}${$mode_1_on}
                                     <div>顶部</div>
-                                </div>
-                                <div data-mode="2" class="apd-mode">
-                                    ${$mode_2_off}${$mode_2_on}
-                                    <div>底部</div>
                                 </div>
                             </div>
                         </div>
@@ -189,10 +181,6 @@ export default class Setting {
                                     <div data-mode="1" class="apd-mode">
                                         ${$mode_1_on}
                                         <div>顶部</div>
-                                    </div>
-                                    <div data-mode="2" class="apd-mode">
-                                        ${$mode_2_on}
-                                        <div>底部</div>
                                     </div>
                                 </div>
                             </div>
@@ -802,7 +790,6 @@ export default class Setting {
     this.setData('danmukuColor', this.option.color)
     this.setData('danmukuMode0', this.option.modes.includes(0))
     this.setData('danmukuMode1', this.option.modes.includes(1))
-    this.setData('danmukuMode2', this.option.modes.includes(2))
     this.setData('danmukuAntiOverlap', this.option.antiOverlap)
     this.setData('danmukuSyncVideo', this.option.synchronousPlayback)
     this.setData('danmukuTheme', this.option.theme)

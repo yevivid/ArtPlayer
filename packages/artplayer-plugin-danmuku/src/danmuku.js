@@ -34,6 +34,7 @@ export default class Danmuku {
     this.timer = null // 定时器
     this.index = 0 // 弹幕索引
     this.wasmReady = null // WASM 初始化 Promise
+    this._pendingMessages = new Map() // postMessage 回调映射
 
     // 格式化后的配置项
     this.option = Danmuku.option
@@ -46,6 +47,13 @@ export default class Danmuku {
 
     // 创建 Web Worker, 用于计算弹幕的 top 值
     this.worker = new DanmuWorker()
+    this.worker.onmessage = (event) => {
+      const { data } = event
+      if (data.id != null && this._pendingMessages.has(data.id)) {
+        this._pendingMessages.get(data.id)(data)
+        this._pendingMessages.delete(data.id)
+      }
+    }
 
     // 初始化 WASM（如果开启合并）
     if (this.option.merge) {
@@ -84,8 +92,8 @@ export default class Danmuku {
       margin: [10, '25%'], // 弹幕上下边距，支持像素数字和百分比
       opacity: 1, // 弹幕透明度，范围在[0 ~ 1]
       color: '#FFFFFF', // 默认弹幕颜色，可以被单独弹幕项覆盖
-      mode: 0, // 默认弹幕模式: 0: 滚动，1: 顶部，2: 底部
-      modes: [0, 1, 2], // 弹幕可见的模式
+      mode: 0, // 默认弹幕模式: 0: 滚动，1: 顶部
+      modes: [0, 1], // 弹幕可见的模式
       fontSize: 25, // 弹幕字体大小，支持像素数字和百分比
       antiOverlap: true, // 弹幕是否防重叠
       synchronousPlayback: false, // 是否同步播放速度
@@ -452,7 +460,7 @@ export default class Danmuku {
     this.validator(danmu, {
       id: '?string', // 弹幕唯一标识
       text: 'string', // 弹幕文本
-      mode: '?number', // 弹幕模式: 0: 滚动，1: 顶部，2: 底部
+      mode: '?number', // 弹幕模式: 0: 滚动，1: 顶部
       color: '?string', // 弹幕颜色
       time: '?number', // 弹幕时间
       border: '?boolean', // 弹幕是否有边框
@@ -540,7 +548,7 @@ export default class Danmuku {
     this.option = Object.assign({}, Danmuku.option, this.option, option)
     this.validator(this.option, Danmuku.scheme)
 
-    this.option.mode = clamp(this.option.mode, 0, 2)
+    this.option.mode = clamp(this.option.mode, 0, 1)
     this.option.speed = clamp(this.option.speed, 1, 20)
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
@@ -578,15 +586,10 @@ export default class Danmuku {
   // 复杂运算交给 Web Worker 处理
   postMessage(message = {}) {
     return new Promise((resolve) => {
-      message.id = Date.now() // 生成唯一标识
+      const id = Date.now() + Math.random()
+      message.id = id
+      this._pendingMessages.set(id, resolve)
       this.worker.postMessage(message)
-      this.worker.onmessage = (event) => {
-        const { data } = event
-        // 判断是否是当前的消息
-        if (data.id === message.id) {
-          resolve(data)
-        }
-      }
     })
   }
 
@@ -696,7 +699,7 @@ export default class Danmuku {
 
             const distance = clientWidth + danmu.$ref.clientWidth
             danmu.$restTime = distance / this.velocity
-            if (danmu.mode === 1 || danmu.mode === 2) {
+            if (danmu.mode === 1) {
               danmu.$restTime = danmu.$restTime / 2
             }
 
@@ -741,6 +744,7 @@ export default class Danmuku {
                 danmu.$ref.dataset.mode = danmu.mode
                 danmu.$ref.dataset.id = danmu.id || ''
 
+                // 固定弹幕诊断日志
                 switch (danmu.mode) {
                   case 0: {
                     danmu.$ref.style.left = '0px'
@@ -783,9 +787,9 @@ export default class Danmuku {
   // 重置正在显示的弹幕: stop/emit 状态的弹幕
   resize() {
     // 因为滚动弹幕(mode 0)绑定了left=0原点，resize时它的相对位移不会错乱，
-    // 所以只需要针对中间悬浮(mode 1, 2)做调整，彻底斩断弹幕缩放狂飙的问题。
+    // 所以只需要针对顶部悬浮(mode 1)做调整
     const fixCenter = (danmu) => {
-      if (danmu.mode === 1 || danmu.mode === 2) {
+      if (danmu.mode === 1) {
         danmu.$ref.style.left = '50%'
         danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
       }
