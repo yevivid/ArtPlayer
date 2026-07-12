@@ -44,13 +44,6 @@ function getDanmuTop({
   // ====================== 滚动模式 0 (从右向左) ======================
   if (target.mode === 0) {
     const rolling = visibles.filter(item => item.mode === 0)
-    const totalTracks = Math.floor((maxTop - marginTop) / trackHeight)
-    const maxVisible = Math.floor(totalTracks / 2)
-
-    // 当前正在显示的滚动弹幕数量超过限制时，不再发射新弹幕
-    if (rolling.length >= maxVisible) {
-      return undefined
-    }
 
     // 收集所有被占用的轨道及其最右边缘
     const occupiedTracks = new Map()
