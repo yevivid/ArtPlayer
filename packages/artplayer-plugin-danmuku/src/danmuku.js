@@ -88,7 +88,7 @@ export default class Danmuku {
     return {
       danmuku: [], // 弹幕数据
       speed: 20, // 弹幕持续时间，范围在[1 ~ 10]
-      density: 25, // 弹幕密度，范围在[5 ~ 85]
+      density: 45, // 弹幕密度，范围在[5 ~ 85]
       margin: [10, '25%'], // 弹幕上下边距，支持像素数字和百分比
       opacity: 1, // 弹幕透明度，范围在[0 ~ 1]
       color: '#FFFFFF', // 默认弹幕颜色，可以被单独弹幕项覆盖
