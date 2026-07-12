@@ -18,6 +18,18 @@ function getDanmuTop({
 
   // ====================== 固定模式 1 (顶部) ======================
   if (target.mode === 1) {
+    // 固定限制：普通固定弹幕始终限制在显示区域总轨道数的 1/2
+    const totalPossibleTracks = Math.floor((maxTop - marginTop) / trackHeight)
+    const maxAllowedCount = Math.floor(totalPossibleTracks * 0.5)
+
+    const currentFixedNormalCount = visibles.filter(
+      item => item.mode === 1 && !item.isHero
+    ).length
+
+    if (!target.isHero && currentFixedNormalCount >= maxAllowedCount) {
+      return undefined
+    }
+
     // 收集所有被占用的像素范围（基于固定轨道高度）
     const occupied = []
     const visibleFixed = visibles

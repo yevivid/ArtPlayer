@@ -341,6 +341,7 @@ export default class Danmuku {
       emit.distance = distance
       emit.time = danmu.$restTime
       emit.mode = danmu.mode
+      emit.isHero = !!danmu._isHero
 
       result.push(emit)
     })
@@ -723,6 +724,7 @@ export default class Danmuku {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
                 width: danmu.$ref.clientWidth,
+                isHero: !!danmu._isHero,
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,

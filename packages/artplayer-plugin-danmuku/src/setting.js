@@ -149,7 +149,7 @@ export default class Setting {
                             <div class="apd-value">未知</div>
                         </div>
                         <div class="apd-config-slider apd-config-density">
-                            弹幕密度
+                            弹幕间距
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
@@ -223,25 +223,25 @@ export default class Setting {
       max: 4,
       steps: [
         {
-          name: "极密",
+          name: "极小",
           value: 5
         },
         {
-          name: "较密",
+          name: "较小",
           value: 25,
           hide: true
         },
         {
           name: "适中",
-          value: 65,
+          value: 45,
         },
         {
-          name: "较稀",
-          value: 45,
+          name: "较大",
+          value: 65,
           hide: true
         },
         {
-          name: "极疏",
+          name: "极大",
           value: 85,
         }
       ],
@@ -556,10 +556,10 @@ export default class Setting {
       },
     })
 
-    // 弹幕密度
+    // 弹幕间距 (原密度)
     this.slider.density = this.createSlider({
       ...this.DENSITY,
-      container: this.query('.apd-config-density .apd-slider'),   // class 可以暂时不改，或改成 apd-config-density
+      container: this.query('.apd-config-density .apd-slider'),
       findIndex: () => {
         return this.DENSITY.steps.findIndex(item => item.value === this.option.density)
       },

@@ -394,7 +394,7 @@ function createPreprocessor(options = {}) {
     return result;
   };
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density,\n  fontSize\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const occupied = [];\n    const visibleFixed = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop);\n    visibleFixed.forEach((item) => {\n      occupied.push({ top: item.top, bottom: item.top + item.height });\n    });\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      let overlaps = false;\n      for (const range of occupied) {\n        if (tryTop < range.bottom && tryTop + target.height > range.top) {\n          overlaps = true;\n          break;\n        }\n      }\n      if (!overlaps)\n        available.push(tryTop);\n    }\n    if (available.length > 0)\n      return available[Math.floor(Math.random() * available.length)];\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density,\n  fontSize\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const totalPossibleTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const maxAllowedCount = Math.floor(totalPossibleTracks * 0.5);\n    const currentFixedNormalCount = visibles.filter(\n      (item) => item.mode === 1 && !item.isHero\n    ).length;\n    if (!target.isHero && currentFixedNormalCount >= maxAllowedCount) {\n      return void 0;\n    }\n    const occupied = [];\n    const visibleFixed = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop);\n    visibleFixed.forEach((item) => {\n      occupied.push({ top: item.top, bottom: item.top + item.height });\n    });\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      let overlaps = false;\n      for (const range of occupied) {\n        if (tryTop < range.bottom && tryTop + target.height > range.top) {\n          overlaps = true;\n          break;\n        }\n      }\n      if (!overlaps)\n        available.push(tryTop);\n    }\n    if (available.length > 0)\n      return available[Math.floor(Math.random() * available.length)];\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -727,6 +727,7 @@ class Danmuku {
       emit.distance = distance;
       emit.time = danmu.$restTime;
       emit.mode = danmu.mode;
+      emit.isHero = !!danmu._isHero;
       result.push(emit);
     });
     return result;
@@ -1007,7 +1008,8 @@ class Danmuku {
               target: {
                 mode: danmu.mode,
                 height: danmu.$ref.clientHeight,
-                width: danmu.$ref.clientWidth
+                width: danmu.$ref.clientWidth,
+                isHero: !!danmu._isHero
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
@@ -1482,7 +1484,7 @@ class Setting {
                             <div class="apd-value">未知</div>
                         </div>
                         <div class="apd-config-slider apd-config-density">
-                            弹幕密度
+                            弹幕间距
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
@@ -1553,25 +1555,25 @@ class Setting {
       max: 4,
       steps: [
         {
-          name: "极密",
+          name: "极小",
           value: 5
         },
         {
-          name: "较密",
+          name: "较小",
           value: 25,
           hide: true
         },
         {
           name: "适中",
-          value: 65
+          value: 45
         },
         {
-          name: "较稀",
-          value: 45,
+          name: "较大",
+          value: 65,
           hide: true
         },
         {
-          name: "极疏",
+          name: "极大",
           value: 85
         }
       ],
@@ -1858,7 +1860,6 @@ class Setting {
     this.slider.density = this.createSlider({
       ...this.DENSITY,
       container: this.query(".apd-config-density .apd-slider"),
-      // class 可以暂时不改，或改成 apd-config-density
       findIndex: () => {
         return this.DENSITY.steps.findIndex((item) => item.value === this.option.density);
       },
