@@ -250,7 +250,7 @@ export default class Danmuku {
     const { clientHeight } = this.$player
     const heroHeight = heroDanmu.$ref.clientHeight
     const maxTop = clientHeight - this.marginBottom
-    const trackHeight = Math.ceil(this.fontSize * 1.125) // 单条轨道高度
+    const trackHeight = Math.ceil(this.fontSize * 1.125) // 固定轨道高度，与 Worker 一致
 
     // 可用轨道数
     const trackCount = Math.floor((maxTop - this.marginTop) / trackHeight)
@@ -264,17 +264,21 @@ export default class Danmuku {
     const heroTop = this.marginTop + startTrack * trackHeight
     const heroBottom = heroTop + heroHeight
 
-    // 踢掉这个范围内所有 mode=1 弹幕
+    // 收集并踢掉重叠的 mode=1 弹幕
+    let kicked = 0
     this.filter('emit', (danmu) => {
       if (danmu.mode === 1 && danmu !== heroDanmu) {
         const dTop = danmu.top ?? 0
         const dBottom = dTop + (danmu.$ref?.clientHeight || 0)
         if (heroTop < dBottom && heroBottom > dTop) {
+          log(`英雄踢掉: "${danmu.text}" top=${dTop} range=[${dTop},${dBottom}) hero=[${heroTop},${heroBottom})`)
           danmu.$ref.style.visibility = 'hidden'
           this.makeWait(danmu)
+          kicked++
         }
       }
     })
+    log(`英雄位置: top=${heroTop} range=[${heroTop},${heroBottom}) 踢掉=${kicked}条`)
 
     return heroTop
   }
@@ -494,8 +498,8 @@ export default class Danmuku {
       danmu.color = this.option.color
     }
 
-    // 弹幕模式只能是 0, 1, 2
-    if (![0, 1, 2].includes(danmu.mode))
+    // 弹幕模式只能是 0, 1
+    if (![0, 1].includes(danmu.mode))
       return this
 
     // 自定义弹幕过滤函数
@@ -712,7 +716,7 @@ export default class Danmuku {
               danmu.$restTime *= 1.2
             }
 
-            // === 关键修改：传 density 给 Worker 计算 top ===
+            // === 关键修改：传 density 和 fontSize 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
               type: 'getDanmuTop',
               target: {
@@ -723,6 +727,7 @@ export default class Danmuku {
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
               density: this.option.density,
+              fontSize: this.fontSize,
               clientWidth,
               clientHeight,
               marginBottom: this.marginBottom,
@@ -758,7 +763,6 @@ export default class Danmuku {
                     break
                   }
                   case 1:
-                  case 2:
                     danmu.$ref.style.left = '50%'
                     danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
                     break

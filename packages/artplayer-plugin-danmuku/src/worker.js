@@ -7,39 +7,41 @@ function getDanmuTop({
   marginTop,
   antiOverlap,
   density,
+  fontSize,
 }) {
   const maxTop = clientHeight - marginBottom
   const minGapRatio = density / 100 // 0.1 ~ 0.9
   const minHorizontalGap = Math.max(20, clientWidth * minGapRatio) // 至少20px保护
 
+  // 使用固定的轨道高度（基于字体大小），与 kickOverlapping 保持一致
+  const trackHeight = Math.ceil(fontSize * 1.125)
+
   // ====================== 固定模式 1 (顶部) ======================
   if (target.mode === 1) {
-    const trackHeight = Math.ceil(target.height)
-
-    // 收集所有被占用的轨道
-    const occupiedTracks = new Set()
+    // 收集所有被占用的像素范围（基于固定轨道高度）
+    const occupied = []
     const visibleFixed = visibles
       .filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop)
     visibleFixed.forEach((item) => {
-      const startTrack = Math.round((item.top - marginTop) / trackHeight)
-      const tracks = Math.ceil(item.height / trackHeight)
-      for (let t = startTrack; t < startTrack + tracks; t++) {
-        occupiedTracks.add(t)
-      }
+      occupied.push({ top: item.top, bottom: item.top + item.height })
     })
 
-    // 收集所有空闲轨道，随机选一条
-    const maxTrack = Math.floor((maxTop - marginTop) / trackHeight)
-    const availableTracks = []
-    for (let t = 0; t <= maxTrack; t++) {
-      if (!occupiedTracks.has(t)) {
-        const top = marginTop + t * trackHeight
-        if (top + target.height <= maxTop)
-          availableTracks.push(top)
+    // 按固定轨道步长尝试所有可能的位置，找到不重叠的位置
+    const available = []
+    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {
+      let overlaps = false
+      for (const range of occupied) {
+        if (tryTop < range.bottom && tryTop + target.height > range.top) {
+          overlaps = true
+          break
+        }
       }
+      if (!overlaps)
+        available.push(tryTop)
     }
-    if (availableTracks.length > 0)
-      return availableTracks[Math.floor(Math.random() * availableTracks.length)]
+
+    if (available.length > 0)
+      return available[Math.floor(Math.random() * available.length)]
     return undefined
   }
 
