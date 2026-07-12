@@ -72,7 +72,6 @@ export default class Danmuku {
     this.destroy = this.destroy.bind(this)
 
     // 监听事件
-    art.on('video:play', this.start)
     art.on('video:playing', this.start)
     art.on('video:pause', this.stop)
     art.on('video:waiting', this.stop)
@@ -88,7 +87,7 @@ export default class Danmuku {
     return {
       danmuku: [], // 弹幕数据
       speed: 20, // 弹幕持续时间，范围在[1 ~ 10]
-      density: 45, // 弹幕密度，范围在[5 ~ 85]
+      gap: 45, // 弹幕间距，范围在[5 ~ 85]，值越小弹幕越密集
       margin: [10, '25%'], // 弹幕上下边距，支持像素数字和百分比
       opacity: 1, // 弹幕透明度，范围在[0 ~ 1]
       color: '#FFFFFF', // 默认弹幕颜色，可以被单独弹幕项覆盖
@@ -112,7 +111,7 @@ export default class Danmuku {
       OPACITY: {}, // 不透明度配置项
       FONT_SIZE: {}, // 弹幕字号配置项
       MARGIN: {}, // 显示区域配置项
-      DENSITY: {}, // 弹幕密度配置项
+      GAP: {}, // 弹幕间距配置项
       SPEED: {}, // 弹幕速度配置项
       COLOR: [], // 颜色列表配置项
       merge: false, // 是否开启弹幕合并
@@ -156,7 +155,7 @@ export default class Danmuku {
       MARGIN: 'object',
       SPEED: 'object',
       COLOR: 'array',
-      density: 'number',
+      gap: 'number',
       merge: 'boolean',
       mergeThreshold: 'number',
       mergeMaxDist: 'number',
@@ -245,44 +244,6 @@ export default class Danmuku {
     return Danmuku.option.fontSize
   }
 
-  // 英雄弹幕抢位：随机选轨道，清掉该轨道上的弹幕
-  kickOverlapping(heroDanmu) {
-    const { clientHeight } = this.$player
-    const heroHeight = heroDanmu.$ref.clientHeight
-    const maxTop = clientHeight - this.marginBottom
-    const trackHeight = Math.ceil(this.fontSize * 1.125) // 固定轨道高度，与 Worker 一致
-
-    // 可用轨道数
-    const trackCount = Math.floor((maxTop - this.marginTop) / trackHeight)
-    // 英雄占几条轨道
-    const heroTracks = Math.ceil(heroHeight / trackHeight)
-    // 随机选一个起始轨道（确保英雄不超出底部）
-    const maxStart = Math.max(0, trackCount - heroTracks)
-    const startTrack = Math.floor(Math.random() * (maxStart + 1))
-
-    // 计算英雄占用的像素范围
-    const heroTop = this.marginTop + startTrack * trackHeight
-    const heroBottom = heroTop + heroHeight
-
-    // 收集并踢掉重叠的 mode=1 弹幕
-    let kicked = 0
-    this.filter('emit', (danmu) => {
-      if (danmu.mode === 1 && danmu !== heroDanmu) {
-        const dTop = danmu.top ?? 0
-        const dBottom = dTop + (danmu.$ref?.clientHeight || 0)
-        if (heroTop < dBottom && heroBottom > dTop) {
-          log(`英雄踢掉: "${danmu.text}" top=${dTop} range=[${dTop},${dBottom}) hero=[${heroTop},${heroBottom})`)
-          danmu.$ref.style.visibility = 'hidden'
-          this.makeWait(danmu)
-          kicked++
-        }
-      }
-    })
-    log(`英雄位置: top=${heroTop} range=[${heroTop},${heroBottom}) 踢掉=${kicked}条`)
-
-    return heroTop
-  }
-
   // 获取弹幕DOM节点
   get $ref() {
     const $ref = this.$refs.pop() || document.createElement('div')
@@ -304,8 +265,7 @@ export default class Danmuku {
 
     // 有的是wait状态：符合时间范围的弹幕
     this.filter('wait', (danmu) => {
-      const window = danmu._isHero ? 1.0 : 0.1
-      if (currentTime + window >= danmu.time && danmu.time >= currentTime - 0.1) {
+      if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu)
         if (result.length <= 2) {
           debug('readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
@@ -341,7 +301,6 @@ export default class Danmuku {
       emit.distance = distance
       emit.time = danmu.$restTime
       emit.mode = danmu.mode
-      emit.isHero = !!danmu._isHero
 
       result.push(emit)
     })
@@ -418,7 +377,7 @@ export default class Danmuku {
 
       // 英雄弹幕调度：标记英雄 + 降级其余
       if (danmus.length > 0) {
-        scheduleHeroDanmuku(danmus, this.art.currentTime)
+        scheduleHeroDanmuku(danmus)
       }
 
       // 假如没有传入弹幕参数，则清空弹幕，否则追加弹幕
@@ -558,7 +517,7 @@ export default class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1)
     this.option.lockTime = clamp(this.option.lockTime, 1, 60)
     this.option.maxLength = clamp(this.option.maxLength, 1, 1000)
-    this.option.density = clamp(this.option.density, 5, 85)
+    this.option.gap = clamp(this.option.gap, 5, 85)
     this.option.mergeThreshold = clamp(this.option.mergeThreshold, 5, 120)
     this.option.mergeMaxDist = clamp(this.option.mergeMaxDist, 1, 20)
     this.option.mergeMaxCosine = clamp(this.option.mergeMaxCosine, 0, 100)
@@ -664,6 +623,10 @@ export default class Danmuku {
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index]
 
+          // 防止并发 update() 重复处理同一弹幕（会导致 DOM 节点泄漏）
+          if (danmu.$state === 'emit')
+            continue
+
           const state = await this.option.beforeVisible(danmu)
 
           if (state) {
@@ -717,7 +680,7 @@ export default class Danmuku {
               danmu.$restTime *= 1.2
             }
 
-            // === 关键修改：传 density 和 fontSize 给 Worker 计算 top ===
+            // === 传 gap 和 fontSize 给 Worker 计算 top ===
             const { result: top } = await this.postMessage({
               type: 'getDanmuTop',
               target: {
@@ -728,7 +691,7 @@ export default class Danmuku {
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
-              density: this.option.density,
+              gap: this.option.gap,
               fontSize: this.fontSize,
               clientWidth,
               clientHeight,
@@ -737,11 +700,7 @@ export default class Danmuku {
             })
 
             if (danmu.$ref) {
-              // 英雄弹幕：自己算轨道，踢人后直接放
-              let finalTop = top
-              if (danmu._isHero) {
-                finalTop = this.kickOverlapping(danmu)
-              }
+              const finalTop = top
 
               if (!this.isStop && finalTop !== undefined) {
                 this.setState(danmu, 'emit')
@@ -904,7 +863,6 @@ export default class Danmuku {
   destroy() {
     this.stop()
     this.worker.terminate()
-    this.art.off('video:play', this.start)
     this.art.off('video:playing', this.start)
     this.art.off('video:pause', this.stop)
     this.art.off('video:waiting', this.stop)

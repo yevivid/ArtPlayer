@@ -49,7 +49,7 @@ export default class Setting {
       margin: null,
       fontSize: null,
       speed: null,
-      density: null,
+      gap: null,
     }
 
     this.emitting = false
@@ -148,7 +148,7 @@ export default class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
-                        <div class="apd-config-slider apd-config-density">
+                        <div class="apd-config-slider apd-config-gap">
                             弹幕间距
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
@@ -217,7 +217,7 @@ export default class Setting {
     }
   }
 
-  get DENSITY() {
+  get GAP() {
     return {
       min: 0,
       max: 4,
@@ -245,7 +245,7 @@ export default class Setting {
           value: 85,
         }
       ],
-      ...this.option.DENSITY
+      ...this.option.GAP
     };
   }
 
@@ -556,22 +556,22 @@ export default class Setting {
       },
     })
 
-    // 弹幕间距 (原密度)
-    this.slider.density = this.createSlider({
-      ...this.DENSITY,
-      container: this.query('.apd-config-density .apd-slider'),
+    // 弹幕间距
+    this.slider.gap = this.createSlider({
+      ...this.GAP,
+      container: this.query('.apd-config-gap .apd-slider'),
       findIndex: () => {
-        return this.DENSITY.steps.findIndex(item => item.value === this.option.density)
+        return this.GAP.steps.findIndex(item => item.value === this.option.gap)
       },
       onChange: (index) => {
-        const step = this.DENSITY.steps[index]
+        const step = this.GAP.steps[index]
         if (!step) return
 
-        const valueEl = this.query('.apd-config-density .apd-value')
+        const valueEl = this.query('.apd-config-gap .apd-value')
         if (valueEl) valueEl.textContent = step.name
 
         this.danmuku.config({
-          density: step.value
+          gap: step.value
         })
       },
     })
@@ -783,7 +783,7 @@ export default class Setting {
     this.slider.margin.reset()
     this.slider.fontSize.reset()
     this.slider.speed.reset()
-    this.slider.density.reset()
+    this.slider.gap.reset()
 
     this.setData('danmukuVisible', this.option.visible)
     this.setData('danmukuMode', this.option.mode)

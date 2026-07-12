@@ -20,24 +20,22 @@ function formatTime(seconds) {
   return m > 0 ? `${m}m${s}s` : `${s}s`
 }
 
-export function scheduleHeroDanmuku(danmus, currentTime = 0) {
+export function scheduleHeroDanmuku(danmus) {
   // 清除旧标记
   for (const d of danmus) {
     d._isHero = false
   }
 
-  // 按30秒分桶（以当前时间为起点）
+  // 按30秒分桶，从头到尾标记所有英雄
   const buckets = new Map()
   for (const d of danmus) {
-    if ((d.time || 0) <= currentTime)
-      continue
-    const id = Math.floor(d.time / BUCKET_SIZE)
+    const id = Math.floor((d.time || 0) / BUCKET_SIZE)
     if (!buckets.has(id))
       buckets.set(id, [])
     buckets.get(id).push(d)
   }
 
-  debug(`开始调度 | 范围: ${formatTime(currentTime)} → 结尾 | 桶数: ${buckets.size}`)
+  debug(`开始调度 | 从头到尾 | 桶数: ${buckets.size}`)
 
   // 每桶选英雄
   let heroCount = 0
@@ -47,7 +45,7 @@ export function scheduleHeroDanmuku(danmus, currentTime = 0) {
     if (candidates.length === 0)
       continue
 
-    // 前3名中随机选1个
+    // 前5名中随机选1个
     candidates.sort((a, b) => (b._mergeCount || 0) - (a._mergeCount || 0))
     const top5 = candidates.slice(0, Math.min(5, candidates.length))
     const hero = top5[Math.floor(Math.random() * top5.length)]
