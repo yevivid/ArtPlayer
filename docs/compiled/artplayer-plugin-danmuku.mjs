@@ -92,20 +92,18 @@ function formatTime(seconds) {
   const s = Math.floor(seconds % 60);
   return m > 0 ? `${m}m${s}s` : `${s}s`;
 }
-function scheduleHeroDanmuku(danmus, currentTime = 0) {
+function scheduleHeroDanmuku(danmus) {
   for (const d of danmus) {
     d._isHero = false;
   }
   const buckets = /* @__PURE__ */ new Map();
   for (const d of danmus) {
-    if ((d.time || 0) <= currentTime)
-      continue;
-    const id = Math.floor(d.time / BUCKET_SIZE);
+    const id = Math.floor((d.time || 0) / BUCKET_SIZE);
     if (!buckets.has(id))
       buckets.set(id, []);
     buckets.get(id).push(d);
   }
-  debug$1(`开始调度 | 范围: ${formatTime(currentTime)} → 结尾 | 桶数: ${buckets.size}`);
+  debug$1(`开始调度 | 从头到尾 | 桶数: ${buckets.size}`);
   for (const [, bucket] of buckets) {
     const candidates = bucket.filter((d) => (d._mergeCount || 0) > HERO_THRESHOLD);
     if (candidates.length === 0)
@@ -394,7 +392,7 @@ function createPreprocessor(options = {}) {
     return result;
   };
 }
-const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  density,\n  fontSize\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = density / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const totalPossibleTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const maxAllowedCount = Math.floor(totalPossibleTracks * 0.5);\n    const currentFixedNormalCount = visibles.filter(\n      (item) => item.mode === 1 && !item.isHero\n    ).length;\n    if (!target.isHero && currentFixedNormalCount >= maxAllowedCount) {\n      return void 0;\n    }\n    const occupied = [];\n    const visibleFixed = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop);\n    visibleFixed.forEach((item) => {\n      occupied.push({ top: item.top, bottom: item.top + item.height });\n    });\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      let overlaps = false;\n      for (const range of occupied) {\n        if (tryTop < range.bottom && tryTop + target.height > range.top) {\n          overlaps = true;\n          break;\n        }\n      }\n      if (!overlaps)\n        available.push(tryTop);\n    }\n    if (available.length > 0)\n      return available[Math.floor(Math.random() * available.length)];\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    if (rolling.length === 0) {\n      if (marginTop + target.height <= maxTop)\n        return marginTop;\n      return void 0;\n    }\n    const tracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!tracks.has(currentTop) || rightEdge > tracks.get(currentTop)) {\n        tracks.set(currentTop, rightEdge);\n      }\n    });\n    const availableTracks = [];\n    for (const [trackTop, lastRight] of tracks.entries()) {\n      if (trackTop >= marginTop && trackTop + target.height <= maxTop) {\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(tracks.keys()).filter((top) => top >= marginTop && top < maxTop).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
+const jsContent = "/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nfunction getDanmuTop({\n  target,\n  visibles,\n  clientWidth,\n  clientHeight,\n  marginBottom,\n  marginTop,\n  antiOverlap,\n  gap,\n  fontSize\n}) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = gap / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const totalTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const normalCount = visibles.filter((item) => item.mode === 1 && !item.isHero).length;\n    if (!target.isHero && normalCount >= Math.floor(totalTracks / 2)) {\n      return void 0;\n    }\n    const occupied = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).map((item) => ({ top: item.top, bottom: item.top + item.height }));\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      const tryBottom = tryTop + target.height;\n      if (!occupied.some((r) => tryTop < r.bottom && tryBottom > r.top)) {\n        available.push(tryTop);\n      }\n    }\n    if (available.length > 0)\n      return available[Math.floor(Math.random() * available.length)];\n    return void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    const totalTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const maxVisible = Math.floor(totalTracks / 2);\n    if (rolling.length >= maxVisible) {\n      return void 0;\n    }\n    const occupiedTracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!occupiedTracks.has(currentTop) || rightEdge > occupiedTracks.get(currentTop)) {\n        occupiedTracks.set(currentTop, rightEdge);\n      }\n    });\n    const allTrackPositions = [];\n    for (let trackTop = marginTop; trackTop + target.height <= maxTop; trackTop += trackHeight) {\n      allTrackPositions.push(trackTop);\n    }\n    if (allTrackPositions.length === 0) {\n      return void 0;\n    }\n    const availableTracks = [];\n    for (const trackTop of allTrackPositions) {\n      if (!occupiedTracks.has(trackTop)) {\n        availableTracks.push(trackTop);\n      } else {\n        const lastRight = occupiedTracks.get(trackTop);\n        if (lastRight + minHorizontalGap <= clientWidth) {\n          availableTracks.push(trackTop);\n        }\n      }\n    }\n    if (availableTracks.length > 0) {\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    }\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(occupiedTracks.keys()).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({\n        top,\n        height: target.height\n      }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prev = virtualDanmus[i - 1];\n        const curr = virtualDanmus[i];\n        const prevBottom = prev.top + prev.height;\n        const diff = curr.top - prevBottom;\n        if (diff >= target.height + 18) {\n          if (prevBottom + target.height <= maxTop) {\n            availableGaps.push(prevBottom);\n          }\n        }\n      }\n      if (availableGaps.length > 0) {\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n      }\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  const fns = { getDanmuTop };\n  const result = fns[data.type](data);\n  globalThis.postMessage({ result, id: data.id });\n};\n";
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -463,7 +461,6 @@ class Danmuku {
     this.reset = this.reset.bind(this);
     this.resize = this.resize.bind(this);
     this.destroy = this.destroy.bind(this);
-    art.on("video:play", this.start);
     art.on("video:playing", this.start);
     art.on("video:pause", this.stop);
     art.on("video:waiting", this.stop);
@@ -478,8 +475,8 @@ class Danmuku {
       // 弹幕数据
       speed: 20,
       // 弹幕持续时间，范围在[1 ~ 10]
-      density: 45,
-      // 弹幕密度，范围在[5 ~ 85]
+      gap: 45,
+      // 弹幕间距，范围在[5 ~ 85]，值越小弹幕越密集
       margin: [10, "25%"],
       // 弹幕上下边距，支持像素数字和百分比
       opacity: 1,
@@ -526,8 +523,8 @@ class Danmuku {
       // 弹幕字号配置项
       MARGIN: {},
       // 显示区域配置项
-      DENSITY: {},
-      // 弹幕密度配置项
+      GAP: {},
+      // 弹幕间距配置项
       SPEED: {},
       // 弹幕速度配置项
       COLOR: [],
@@ -579,7 +576,7 @@ class Danmuku {
       MARGIN: "object",
       SPEED: "object",
       COLOR: "array",
-      density: "number",
+      gap: "number",
       merge: "boolean",
       mergeThreshold: "number",
       mergeMaxDist: "number",
@@ -652,34 +649,6 @@ class Danmuku {
     }
     return Danmuku.option.fontSize;
   }
-  // 英雄弹幕抢位：随机选轨道，清掉该轨道上的弹幕
-  kickOverlapping(heroDanmu) {
-    const { clientHeight } = this.$player;
-    const heroHeight = heroDanmu.$ref.clientHeight;
-    const maxTop = clientHeight - this.marginBottom;
-    const trackHeight = Math.ceil(this.fontSize * 1.125);
-    const trackCount = Math.floor((maxTop - this.marginTop) / trackHeight);
-    const heroTracks = Math.ceil(heroHeight / trackHeight);
-    const maxStart = Math.max(0, trackCount - heroTracks);
-    const startTrack = Math.floor(Math.random() * (maxStart + 1));
-    const heroTop = this.marginTop + startTrack * trackHeight;
-    const heroBottom = heroTop + heroHeight;
-    let kicked = 0;
-    this.filter("emit", (danmu) => {
-      if (danmu.mode === 1 && danmu !== heroDanmu) {
-        const dTop = danmu.top ?? 0;
-        const dBottom = dTop + (danmu.$ref?.clientHeight || 0);
-        if (heroTop < dBottom && heroBottom > dTop) {
-          log(`英雄踢掉: "${danmu.text}" top=${dTop} range=[${dTop},${dBottom}) hero=[${heroTop},${heroBottom})`);
-          danmu.$ref.style.visibility = "hidden";
-          this.makeWait(danmu);
-          kicked++;
-        }
-      }
-    });
-    log(`英雄位置: top=${heroTop} range=[${heroTop},${heroBottom}) 踢掉=${kicked}条`);
-    return heroTop;
-  }
   // 获取弹幕DOM节点
   get $ref() {
     const $ref = this.$refs.pop() || document.createElement("div");
@@ -694,8 +663,7 @@ class Danmuku {
     const { currentTime } = this.art;
     const result = [];
     this.filter("wait", (danmu) => {
-      const window2 = danmu._isHero ? 1 : 0.1;
-      if (currentTime + window2 >= danmu.time && danmu.time >= currentTime - 0.1) {
+      if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu);
         if (result.length <= 2) {
           debug("readys 匹配:", { text: danmu.text, time: danmu.time, currentTime });
@@ -727,7 +695,6 @@ class Danmuku {
       emit.distance = distance;
       emit.time = danmu.$restTime;
       emit.mode = danmu.mode;
-      emit.isHero = !!danmu._isHero;
       result.push(emit);
     });
     return result;
@@ -781,7 +748,7 @@ class Danmuku {
         }
       }
       if (danmus.length > 0) {
-        scheduleHeroDanmuku(danmus, this.art.currentTime);
+        scheduleHeroDanmuku(danmus);
       }
       if (danmuku === void 0) {
         this.reset();
@@ -884,7 +851,7 @@ class Danmuku {
     this.option.opacity = clamp(this.option.opacity, 0, 1);
     this.option.lockTime = clamp(this.option.lockTime, 1, 60);
     this.option.maxLength = clamp(this.option.maxLength, 1, 1e3);
-    this.option.density = clamp(this.option.density, 5, 85);
+    this.option.gap = clamp(this.option.gap, 5, 85);
     this.option.mergeThreshold = clamp(this.option.mergeThreshold, 5, 120);
     this.option.mergeMaxDist = clamp(this.option.mergeMaxDist, 1, 20);
     this.option.mergeMaxCosine = clamp(this.option.mergeMaxCosine, 0, 100);
@@ -964,6 +931,8 @@ class Danmuku {
         }
         for (let index = 0; index < readys.length; index++) {
           const danmu = readys[index];
+          if (danmu.$state === "emit")
+            continue;
           const state = await this.option.beforeVisible(danmu);
           if (state) {
             if (this.queue.length <= 5) {
@@ -1013,7 +982,7 @@ class Danmuku {
               },
               visibles: this.visibles,
               antiOverlap: this.option.antiOverlap,
-              density: this.option.density,
+              gap: this.option.gap,
               fontSize: this.fontSize,
               clientWidth,
               clientHeight,
@@ -1021,10 +990,7 @@ class Danmuku {
               marginTop: this.marginTop
             });
             if (danmu.$ref) {
-              let finalTop = top;
-              if (danmu._isHero) {
-                finalTop = this.kickOverlapping(danmu);
-              }
+              const finalTop = top;
               if (!this.isStop && finalTop !== void 0) {
                 this.setState(danmu, "emit");
                 danmu.top = finalTop;
@@ -1159,7 +1125,6 @@ class Danmuku {
   destroy() {
     this.stop();
     this.worker.terminate();
-    this.art.off("video:play", this.start);
     this.art.off("video:playing", this.start);
     this.art.off("video:pause", this.stop);
     this.art.off("video:waiting", this.stop);
@@ -1394,7 +1359,7 @@ class Setting {
       margin: null,
       fontSize: null,
       speed: null,
-      density: null
+      gap: null
     };
     this.emitting = false;
     this.isLock = false;
@@ -1483,7 +1448,7 @@ class Setting {
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
                         </div>
-                        <div class="apd-config-slider apd-config-density">
+                        <div class="apd-config-slider apd-config-gap">
                             弹幕间距
                             <div class="apd-slider"></div>
                             <div class="apd-value">未知</div>
@@ -1549,7 +1514,7 @@ class Setting {
       ...this.option.FONT_SIZE
     };
   }
-  get DENSITY() {
+  get GAP() {
     return {
       min: 0,
       max: 4,
@@ -1577,7 +1542,7 @@ class Setting {
           value: 85
         }
       ],
-      ...this.option.DENSITY
+      ...this.option.GAP
     };
   }
   get MARGIN() {
@@ -1857,19 +1822,19 @@ class Setting {
         });
       }
     });
-    this.slider.density = this.createSlider({
-      ...this.DENSITY,
-      container: this.query(".apd-config-density .apd-slider"),
+    this.slider.gap = this.createSlider({
+      ...this.GAP,
+      container: this.query(".apd-config-gap .apd-slider"),
       findIndex: () => {
-        return this.DENSITY.steps.findIndex((item) => item.value === this.option.density);
+        return this.GAP.steps.findIndex((item) => item.value === this.option.gap);
       },
       onChange: (index) => {
-        const step = this.DENSITY.steps[index];
+        const step = this.GAP.steps[index];
         if (!step) return;
-        const valueEl = this.query(".apd-config-density .apd-value");
+        const valueEl = this.query(".apd-config-gap .apd-value");
         if (valueEl) valueEl.textContent = step.name;
         this.danmuku.config({
-          density: step.value
+          gap: step.value
         });
       }
     });
@@ -2042,7 +2007,7 @@ class Setting {
     this.slider.margin.reset();
     this.slider.fontSize.reset();
     this.slider.speed.reset();
-    this.slider.density.reset();
+    this.slider.gap.reset();
     this.setData("danmukuVisible", this.option.visible);
     this.setData("danmukuMode", this.option.mode);
     this.setData("danmukuColor", this.option.color);
