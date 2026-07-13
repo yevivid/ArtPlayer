@@ -57,6 +57,48 @@ export default class Setting extends Component {
         }
       })
 
+      art.on('control', (state) => {
+        if (!state && this.show) {
+          this.show = false
+          this.render()
+        }
+      })
+
+      art.on('video:click', () => {
+        if (this.show) {
+          this.show = false
+          this.render()
+        }
+      })
+
+      art.proxy(controls.setting, 'mouseenter', () => {
+        if (!art.isMobile) {
+          this.show = true
+          this.render()
+        }
+      })
+
+      art.proxy(controls.setting, 'mouseleave', (event) => {
+        if (!art.isMobile && !includeFromEvent(event, this.$parent)) {
+          this.show = false
+          this.render()
+        }
+      })
+
+      art.proxy(this.$parent, 'mouseenter', () => {
+        if (!art.isMobile) {
+          this.show = true
+          this.render()
+        }
+      })
+
+      art.proxy(this.$parent, 'mouseleave', (event) => {
+        if (!art.isMobile && !includeFromEvent(event, controls.setting)) {
+          this.show = false
+          this.render()
+        }
+      })
+
       art.on('resize', () => this.resize())
     }
   }

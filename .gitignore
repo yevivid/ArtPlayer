@@ -7,3 +7,5 @@ lerna-debug.log
 yarn.lock
 
 .mimocode/
+
+docs/
