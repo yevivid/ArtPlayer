@@ -69,13 +69,17 @@ export default function heatmap(art, danmuku, option) {
       let $start = null
       let $stop = null
 
-      function update(arg = []) {
+      function update(arg = [], reason = 'unknown') {
         $start = null
         $stop = null
         $heatmap.innerHTML = ''
 
         if (!art.duration || art.option.isLive)
           return
+
+        const videoSrc = art.option.url || ''
+        const videoName = videoSrc.split('/').pop() || '未知'
+        console.log(`[Heatmap] 生成热力图 | 触发: ${reason} | 视频: ${videoName} | 时长: ${Math.round(art.duration)}s | 弹幕数: ${danmuku.queue.length}`)
 
         const svg = {
           w: $heatmap.offsetWidth,
@@ -89,15 +93,21 @@ export default function heatmap(art, danmuku, option) {
           yMax: 128,
           scale: 0.25,
           opacity: 0.2,
-          minHeight: Math.floor(svg.h * 0.05),
-          sampling: Math.floor(svg.w / 100),
           smoothing: 0.2,
           flattening: 0.2,
+          timePerPoint: 30,    // 每个采样点覆盖的秒数
+          hotPercentile: 0.75, // 数据的前N百分位视为热区
+          hotExponent: 1.0,    // 热区对比度：<1 压缩，=1 线性，>1 增强
+          densityReference: 100, // 密度参考值：每采样点此数量视为满热度
         }
 
         if (typeof option === 'object') {
           Object.assign(options, option)
         }
+
+        // 从 timePerPoint 推导像素步长
+        const numPoints = Math.ceil(art.duration / options.timePerPoint)
+        const sampling = Math.max(1, Math.floor(svg.w / numPoints))
 
         let points = []
 
@@ -105,7 +115,7 @@ export default function heatmap(art, danmuku, option) {
           points = [...arg]
         }
         else {
-          points = computeDensity(danmuku.queue, svg.w, art.duration, options.sampling)
+          points = computeDensity(danmuku.queue, svg.w, art.duration, sampling)
         }
 
         if (points.length === 0)
@@ -119,30 +129,40 @@ export default function heatmap(art, danmuku, option) {
         }
 
         // ── 底座 + 波浪 归一化 ──
-        // 1. 找热区（>=60）的最大弹幕数，作为顶部边界
-        let hotMax = 60
+        // 从数据分布自适应计算热区阈值（百分位）
+        const counts = points.map(p => p[1]).sort((a, b) => a - b)
+        const hotThreshold = Math.max(5, counts[Math.floor(counts.length * options.hotPercentile)])
+
+        // 1. 找热区的最大弹幕数，作为顶部边界
+        let hotMax = hotThreshold
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1]
-          if (count >= 60 && count > hotMax) hotMax = count
+          if (count >= hotThreshold && count > hotMax) hotMax = count
         }
 
-        // 2. 基准线 = 60，顶部 = hotMax，在这个范围内取对数
-        const baseline = svg.h * 0.45
-        const coldScale = svg.h / 120
-        const hotMaxH = svg.h * 0.35
-        const logMax = Math.log(hotMax / 60) || 1
+        // 2. 密度缩放：根据平均弹幕密度缩放热力图高度
+        const avgCount = counts.reduce((a, b) => a + b, 0) / counts.length
+        const densityScale = Math.max(0.3, Math.min(1, avgCount / options.densityReference))
+        console.log(`[Heatmap] 采样点: ${points.length} | 平均弹幕: ${avgCount.toFixed(1)} | 阈值: ${hotThreshold} | 密度缩放: ${densityScale.toFixed(2)}`)
 
-        // 3. 归一化
+        // 3. 布局参数（按密度缩放）
+        const minHeight = Math.floor(svg.h * 0.05 * densityScale)
+        const baseline = svg.h * 0.45 * densityScale
+        const hotMaxH = svg.h * 0.35 * densityScale
+        const coldScale = (baseline - minHeight) / hotThreshold
+        const hotRange = hotMax - hotThreshold || 1
+
+        // 4. 归一化
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1]
-          if (count >= 60) {
-            // 热区：[60, hotMax] → [baseline, baseline + hotMaxH]，对数映射
-            const logVal = Math.log(count / 60)
-            points[i][1] = baseline + (logVal / logMax) * hotMaxH
+          if (count >= hotThreshold) {
+            // 热区：[hotThreshold, hotMax] → [baseline, baseline + hotMaxH]，幂函数映射
+            const normalized = (count - hotThreshold) / hotRange
+            points[i][1] = baseline + Math.pow(normalized, options.hotExponent) * hotMaxH
           }
           else {
-            // 冷区：[0, 60] → [baseline - 60*coldScale, baseline]，线性映射
-            points[i][1] = Math.max(options.minHeight, baseline - (60 - count) * coldScale)
+            // 冷区：[0, hotThreshold] → [minHeight, baseline]，线性映射
+            points[i][1] = Math.max(minHeight, baseline - (hotThreshold - count) * coldScale)
           }
         }
 
@@ -196,28 +216,36 @@ export default function heatmap(art, danmuku, option) {
 
         $start = query('#heatmap-start', $heatmap)
         $stop = query('#heatmap-stop', $heatmap)
-        $start.setAttribute('offset', `${art.played * 100}%`)
-        $stop.setAttribute('offset', `${art.played * 100}%`)
+        if ($start && $stop) {
+          const raw = Number(art.played)
+          const played = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : 0
+          $start.setAttribute('offset', `${played * 100}%`)
+          $stop.setAttribute('offset', `${played * 100}%`)
+        }
       }
 
       art.on('video:timeupdate', () => {
         if ($start && $stop) {
-          $start.setAttribute('offset', `${art.played * 100}%`)
-          $stop.setAttribute('offset', `${art.played * 100}%`)
+          const raw = Number(art.played)
+          const played = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : 0
+          $start.setAttribute('offset', `${played * 100}%`)
+          $stop.setAttribute('offset', `${played * 100}%`)
         }
       })
 
       art.on('setBar', (type, percentage) => {
         if ($start && $stop && type === 'played') {
-          $start.setAttribute('offset', `${percentage * 100}%`)
-          $stop.setAttribute('offset', `${percentage * 100}%`)
+          const raw = Number(percentage)
+          const val = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : 0
+          $start.setAttribute('offset', `${val * 100}%`)
+          $stop.setAttribute('offset', `${val * 100}%`)
         }
       })
 
-      art.on('ready', () => update())
-      art.on('resize', () => update())
-      art.on('artplayerPluginDanmuku:loaded', () => update())
-      art.on('artplayerPluginDanmuku:points', points => update(points))
+      art.on('ready', () => update([], 'ready'))
+      art.on('resize', () => update([], 'resize'))
+      art.on('artplayerPluginDanmuku:loaded', () => update([], 'danmuku:loaded'))
+      art.on('artplayerPluginDanmuku:points', points => update(points, 'danmuku:points'))
     },
   })
 }
