@@ -210,8 +210,8 @@ export default class Setting {
 
   get FONT_SIZE() {
     return {
-      min: 12,
-      max: 120,
+      min: 14,
+      max: 30,
       steps: [],
       ...this.option.FONT_SIZE,
     }

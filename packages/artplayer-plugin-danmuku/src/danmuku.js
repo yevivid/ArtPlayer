@@ -233,12 +233,12 @@ export default class Danmuku {
     const fontSize = this.option.fontSize
 
     if (typeof fontSize === 'number') {
-      return Math.round(clamp(fontSize, 12, clientHeight))
+      return Math.round(clamp(fontSize, 14, clientHeight))
     }
 
     if (typeof fontSize === 'string' && fontSize.endsWith('%')) {
       const ratio = Number.parseFloat(fontSize) / 100
-      return Math.round(clamp(clientHeight * ratio, 12, clientHeight))
+      return Math.round(clamp(clientHeight * ratio, 14, clientHeight))
     }
 
     return Danmuku.option.fontSize
