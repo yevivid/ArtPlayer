@@ -528,6 +528,16 @@ export default class Danmuku {
       this.reset()
     }
 
+    // danmuku 选项变化时重新加载弹幕数据
+    if (option.danmuku !== undefined) {
+      // 先清空旧队列，避免 resize 等事件使用过期数据
+      this.queue = []
+      this.states = { wait: [], ready: [], emit: [], stop: [] }
+      this.$refs = []
+      this.$danmuku.textContent = ''
+      this.load()
+    }
+
     // 通过配置项控制弹幕的显示和隐藏
     if (this.option.visible) {
       this.show()

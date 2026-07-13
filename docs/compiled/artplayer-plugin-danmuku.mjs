@@ -859,6 +859,13 @@ class Danmuku {
     if (option.fontSize) {
       this.reset();
     }
+    if (option.danmuku !== void 0) {
+      this.queue = [];
+      this.states = { wait: [], ready: [], emit: [], stop: [] };
+      this.$refs = [];
+      this.$danmuku.textContent = "";
+      this.load();
+    }
     if (this.option.visible) {
       this.show();
     } else {
@@ -1198,6 +1205,8 @@ function heatmap(art, danmuku, option) {
         $stop = null;
         $heatmap.innerHTML = "";
         if (!art.duration || art.option.isLive)
+          return;
+        if (arg.length === 0 && danmuku.queue.length === 0)
           return;
         const videoSrc = art.option.url || "";
         const videoName = videoSrc.split("/").pop() || "未知";
@@ -2092,6 +2101,9 @@ function artplayerPluginDanmuku(option) {
       mount: setting.mount.bind(setting),
       get option() {
         return danmuku.option;
+      },
+      get queue() {
+        return danmuku.queue;
       },
       get isHide() {
         return danmuku.isHide;

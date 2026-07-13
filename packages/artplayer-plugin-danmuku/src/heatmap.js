@@ -77,6 +77,10 @@ export default function heatmap(art, danmuku, option) {
         if (!art.duration || art.option.isLive)
           return
 
+        // 队列为空时不生成热力图（避免 resize/ready 在弹幕加载前触发的无效重建）
+        if (arg.length === 0 && danmuku.queue.length === 0)
+          return
+
         const videoSrc = art.option.url || ''
         const videoName = videoSrc.split('/').pop() || '未知'
         console.log(`[Heatmap] 生成热力图 | 触发: ${reason} | 视频: ${videoName} | 时长: ${Math.round(art.duration)}s | 弹幕数: ${danmuku.queue.length}`)
