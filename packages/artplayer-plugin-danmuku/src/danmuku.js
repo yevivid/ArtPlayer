@@ -35,6 +35,7 @@ export default class Danmuku {
     this.index = 0 // 弹幕索引
     this.wasmReady = null // WASM 初始化 Promise
     this._pendingMessages = new Map() // postMessage 回调映射
+    this.loading = false // 防止重复 load
 
     // 格式化后的配置项
     this.option = Danmuku.option
@@ -323,6 +324,9 @@ export default class Danmuku {
 
   // 加载弹幕
   async load(danmuku) {
+    if (this.loading) return
+    this.loading = true
+
     const { errorHandle } = this.utils
 
     let danmus = []
@@ -401,6 +405,9 @@ export default class Danmuku {
     catch (error) {
       this.art.emit('artplayerPluginDanmuku:error', error)
       throw error
+    }
+    finally {
+      this.loading = false
     }
 
     return this
