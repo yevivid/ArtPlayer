@@ -36,6 +36,7 @@
     "create:plugin": "node ./scripts/plugin/create.js",
     "dev": "npx cross-env NODE_ENV=development node ./scripts/dev.js",
     "build": "npx cross-env NODE_ENV=production node ./scripts/build.js",
+    "build:danmuku": "npx cross-env NODE_ENV=production node ./scripts/build.js artplayer-plugin-danmuku",
     "lint": "npx eslint packages/*/{src,types,package.json} scripts/*.js test/* docs/assets/ts/* --fix",
     "build:all": "npm run build all && npm run build:i18n && npm run build:ts && npm run build:docs && npm run lint"
   },

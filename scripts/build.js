@@ -86,14 +86,21 @@ async function runBuild() {
     console.log('✅ Finished building all packages!')
   }
   else {
-    const { value } = await prompts({
-      type: 'select',
-      name: 'value',
-      message: 'Which project do you want to build?',
-      choices: Object.keys(projects).map(name => ({ title: name, value: name })),
-    })
-    if (value)
-      await buildProject(value)
+    // 支持直接传包名: npm run build artplayer-plugin-danmuku
+    const pkgName = process.argv[2]
+    if (pkgName && projects[pkgName]) {
+      await buildProject(pkgName)
+    }
+    else {
+      const { value } = await prompts({
+        type: 'select',
+        name: 'value',
+        message: 'Which project do you want to build?',
+        choices: Object.keys(projects).map(name => ({ title: name, value: name })),
+      })
+      if (value)
+        await buildProject(value)
+    }
   }
 }
 

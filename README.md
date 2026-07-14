@@ -148,6 +148,22 @@ let art = new Artplayer({
 | [Canvas](https://artplayer.org/?libs=./uncompiled/artplayer-proxy-canvas/index.js&example=canvas) | Proxy video to canvas | <img src="https://img.shields.io/npm/v/artplayer-proxy-canvas.svg?sanitize=true"><br><img src="https://img.shields.io/npm/dm/artplayer-proxy-canvas.svg?sanitize=true"> |
 | [Mediabunny](https://artplayer.org/?libs=./uncompiled/artplayer-proxy-mediabunny/index.js&example=mediabunny) | Mediabunny proxy | <img src="https://img.shields.io/npm/v/artplayer-proxy-mediabunny.svg?sanitize=true"><br><img src="https://img.shields.io/npm/dm/artplayer-proxy-mediabunny.svg?sanitize=true"> |
 
+## Development
+
+```bash
+# 交互式选择包构建
+npm run build
+
+# 直接指定包名构建（跳过交互）
+npm run build artplayer-plugin-danmuku
+
+# 构建全部
+npm run build all
+
+# 快捷构建 danmuku 插件
+npm run build:danmuku
+```
+
 ## Changelog
 
 [CHANGELOG.md](./CHANGELOG.md)
