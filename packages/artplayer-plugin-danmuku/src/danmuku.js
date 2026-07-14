@@ -1,8 +1,5 @@
 import { bilibiliDanmuParseFromUrl } from './bilibili'
 import { scheduleHeroDanmuku } from './consensus-scheduler'
-import { mergeDanmuku } from './merge'
-import { createPreprocessor } from './preprocess'
-import { initSimilarity } from './wasm/similarity'
 import DanmuWorker from './worker.js?worker&inline'
 
 // 调试开关
@@ -33,7 +30,6 @@ export default class Danmuku {
     this.isHide = false // 是否隐藏
     this.timer = null // 定时器
     this.index = 0 // 弹幕索引
-    this.wasmReady = null // WASM 初始化 Promise
     this._pendingMessages = new Map() // postMessage 回调映射
     this.loading = false // 防止重复 load
 
@@ -54,15 +50,6 @@ export default class Danmuku {
         this._pendingMessages.get(data.id)(data)
         this._pendingMessages.delete(data.id)
       }
-    }
-
-    // 初始化 WASM（如果开启合并）
-    if (this.option.merge) {
-      this.wasmReady = initSimilarity(this.option.mergeWasmUrl).catch((e) => {
-        console.error('[Danmuku] WASM 初始化失败:', e)
-        this.option.merge = false
-        return null
-      })
     }
 
     // 绑定公用事件
@@ -349,34 +336,25 @@ export default class Danmuku {
       errorHandle(Array.isArray(danmus), 'Danmuku need return an array as result')
       debug('原始弹幕数量:', danmus.length)
 
-      // 文本预处理：全角转半角、去尾部标点、压缩空格等
-      const preprocessor = this.option.preprocess ? createPreprocessor() : null
-      if (preprocessor) {
-        for (let i = 0; i < danmus.length; i++) {
-          const dm = danmus[i]
-          if (dm && dm.text) {
-            dm._normalizedText = preprocessor(dm.text)
-          }
-        }
-      }
-
-      // 弹幕合并：将时间接近且内容相似的弹幕合并
-      if (this.option.merge && danmus.length > 0) {
-        if (this.wasmReady) {
-          await this.wasmReady
-        }
-        try {
-          const before = danmus.length
-          danmus = mergeDanmuku(danmus, {
+      // 预处理 + 合并 → 交给 Worker（WASM 在 Worker 内运行）
+      if (danmus.length > 0) {
+        // 相对路径转绝对路径（Blob URL Worker 无法解析相对 URL）
+        const wasmUrl = this.option.mergeWasmUrl
+          ? new URL(this.option.mergeWasmUrl, window.location.href).href
+          : ''
+        const { result: processed } = await this.postMessage({
+          type: 'mergeDanmuku',
+          danmus,
+          options: {
+            preprocess: this.option.preprocess,
+            merge: this.option.merge,
+            wasmUrl,
             threshold: this.option.mergeThreshold,
             maxDist: this.option.mergeMaxDist,
             maxCosine: this.option.mergeMaxCosine,
-          })
-          log('弹幕合并:', before, '->', danmus.length)
-        }
-        catch (e) {
-          log('合并失败:', e)
-        }
+          },
+        })
+        danmus = processed
       }
 
       // 英雄弹幕调度：标记英雄 + 降级其余
