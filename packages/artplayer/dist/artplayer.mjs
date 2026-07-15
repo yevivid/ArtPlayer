@@ -13,7 +13,7 @@ var hasRequiredOptionValidator;
 function requireOptionValidator() {
   if (hasRequiredOptionValidator) return optionValidator$1.exports;
   hasRequiredOptionValidator = 1;
-  (function(module, exports$1) {
+  (function(module, exports) {
     !(function(r, t) {
       module.exports = t();
     })(optionValidator, function() {
@@ -1205,7 +1205,7 @@ function getPosFromEvent(art, event) {
 }
 function setCurrentTime(art, event) {
   if (art.isRotate) {
-    const percentage = event.touches[0].clientY / art.height;
+    const percentage = (event.touches[0].clientY - art.top) / art.height;
     const second = percentage * art.duration;
     art.emit("setBar", "played", percentage, event);
     art.seek = second;
@@ -4033,6 +4033,42 @@ class Setting extends Component {
         const isControl = includeFromEvent(event, controls.setting);
         const isSetting = includeFromEvent(event, this.$parent);
         if (this.show && !isControl && !isSetting) {
+          this.show = false;
+          this.render();
+        }
+      });
+      art.on("control", (state2) => {
+        if (!state2 && this.show) {
+          this.show = false;
+          this.render();
+        }
+      });
+      art.on("video:click", () => {
+        if (this.show) {
+          this.show = false;
+          this.render();
+        }
+      });
+      art.proxy(controls.setting, "mouseenter", () => {
+        if (!art.isMobile) {
+          this.show = true;
+          this.render();
+        }
+      });
+      art.proxy(controls.setting, "mouseleave", (event) => {
+        if (!art.isMobile && !includeFromEvent(event, this.$parent)) {
+          this.show = false;
+          this.render();
+        }
+      });
+      art.proxy(this.$parent, "mouseenter", () => {
+        if (!art.isMobile) {
+          this.show = true;
+          this.render();
+        }
+      });
+      art.proxy(this.$parent, "mouseleave", (event) => {
+        if (!art.isMobile && !includeFromEvent(event, controls.setting)) {
           this.show = false;
           this.render();
         }

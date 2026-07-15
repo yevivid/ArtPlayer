@@ -1,6 +1,14 @@
 import { bilibiliDanmuParseFromUrl } from './bilibili'
 import { scheduleHeroDanmuku } from './consensus-scheduler'
 import DanmuWorker from './worker.js?worker&inline'
+import MergeWorker from './merge-worker.js?worker&inline'
+
+// 根据弹幕数量和 CPU 核心数决定并行 Worker 数量
+function getWorkerCount(danmukuCount) {
+  if (danmukuCount < 5000) return 1
+  const hw = navigator.hardwareConcurrency || 4
+  return Math.min(hw - 1, 8)
+}
 
 // 调试开关
 const DEBUG = false
@@ -339,19 +347,31 @@ export default class Danmuku {
         const wasmUrl = this.option.mergeWasmUrl
           ? new URL(this.option.mergeWasmUrl, window.location.href).href
           : ''
-        const { result: processed } = await this.postMessage({
-          type: 'mergeDanmuku',
-          danmus,
-          options: {
-            preprocess: this.option.preprocess,
-            merge: this.option.merge,
-            wasmUrl,
-            threshold: this.option.mergeThreshold,
-            maxDist: this.option.mergeMaxDist,
-            maxCosine: this.option.mergeMaxCosine,
-          },
-        })
-        danmus = processed
+
+        const mergeOpts = {
+          preprocess: this.option.preprocess,
+          merge: this.option.merge,
+          wasmUrl,
+          threshold: this.option.mergeThreshold,
+          maxDist: this.option.mergeMaxDist,
+          maxCosine: this.option.mergeMaxCosine,
+        }
+
+        const workerCount = getWorkerCount(danmus.length)
+
+        if (workerCount <= 1 || !this.option.merge) {
+          // 单 Worker 路径
+          const { result: processed } = await this.postMessage({
+            type: 'mergeDanmuku',
+            danmus,
+            options: mergeOpts,
+          })
+          danmus = processed
+        }
+        else {
+          // 多 Worker 并行路径
+          danmus = await this.parallelMerge(danmus, mergeOpts, workerCount)
+        }
       }
 
       // 英雄弹幕调度：标记英雄 + 降级其余
@@ -546,6 +566,95 @@ export default class Danmuku {
       message.id = id
       this._pendingMessages.set(id, resolve)
       this.worker.postMessage(message)
+    })
+  }
+
+  // 多 Worker 并行合并弹幕
+  parallelMerge(danmus, options, workerCount) {
+    return new Promise((resolve) => {
+      const sorted = [...danmus].sort((a, b) => (a.time || 0) - (b.time || 0))
+      const minTime = sorted[0].time || 0
+      const maxTime = sorted[sorted.length - 1].time || 0
+
+      // 按时间区间分片
+      const interval = (maxTime - minTime) / workerCount
+      const chunks = []
+      for (let i = 0; i < workerCount; i++) {
+        const start = minTime + i * interval
+        const end = i === workerCount - 1 ? Infinity : start + interval
+        const chunk = sorted.filter(d => {
+          const t = d.time || 0
+          return t >= start && t < end
+        })
+        chunks.push(chunk)
+      }
+
+      // 过滤空分片
+      const validChunks = chunks.filter(c => c.length > 0)
+      if (validChunks.length === 0) {
+        resolve(danmus)
+        return
+      }
+
+      // 创建 Worker 并并行初始化
+      const workers = validChunks.map(() => new MergeWorker())
+      let initialized = 0
+
+      const onWorkerReady = () => {
+        initialized++
+        if (initialized < workers.length) return
+
+        // 所有 Worker 初始化完成，并行处理
+        let completed = 0
+        const results = []
+
+        const checkDone = () => {
+          completed++
+          if (completed < workers.length) return
+          // 全部完成，终止 Worker 并合并结果
+          workers.forEach(w => w.terminate())
+          const merged = results.flat()
+          merged.sort((a, b) => (a.time || 0) - (b.time || 0))
+          resolve(merged)
+        }
+
+        workers.forEach((w, i) => {
+          w.onmessage = (e) => {
+            if (e.data.error) {
+              console.error('[Danmuku] Worker merge error:', e.data.error)
+              results[i] = validChunks[i] // 出错时返回原始数据
+            }
+            else {
+              results[i] = e.data.result || []
+            }
+            checkDone()
+          }
+          w.postMessage({
+            type: 'process',
+            items: validChunks[i],
+            options,
+            id: i,
+          })
+        })
+      }
+
+      workers.forEach((w, i) => {
+        w.onmessage = (e) => {
+          if (e.data.error) {
+            console.error('[Danmuku] Worker init error:', e.data.error)
+            // 初始化失败，回退到单 Worker
+            workers.forEach(w => w.terminate())
+            this.postMessage({
+              type: 'mergeDanmuku',
+              danmus,
+              options,
+            }).then(({ result }) => resolve(result))
+            return
+          }
+          onWorkerReady()
+        }
+        w.postMessage({ type: 'init', wasmUrl: options.wasmUrl, id: i })
+      })
     })
   }
 
