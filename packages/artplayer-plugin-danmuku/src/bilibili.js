@@ -34,7 +34,7 @@ function bilibiliDanmuParseFromXml(xmlString) {
           time: Number(attr[0]),
           mode: getMode(Number(attr[1])),
           fontSize: Number(attr[2]),
-          color: `#${Number(attr[3]).toString(16)}`,
+          color: `#${Number(attr[3]).toString(16).padStart(6, '0')}`,
           timestamp: Number(attr[4]),
           pool: Number(attr[5]),
           userID: attr[6],

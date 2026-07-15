@@ -217,12 +217,21 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
     const totalTracks = Math.floor((maxTop - marginTop) / trackHeight)
     const normalCount = visibles.filter(item => item.mode === 1 && !item.isHero).length
     if (!target.isHero && normalCount >= Math.floor(totalTracks / 2)) return undefined
-    const occupied = visibles.filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop).map(item => ({ top: item.top, bottom: item.top + item.height }))
+
+    // 收集所有已占用的顶部弹幕位置
+    const occupied = visibles.filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop)
+      .map(item => ({ top: item.top, bottom: item.top + item.height }))
+
+    // 英雄弹幕可以挤占普通弹幕的位置（只要能放下）
     const available = []
     for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {
       const tryBottom = tryTop + target.height
-      if (!occupied.some(r => tryTop < r.bottom && tryBottom > r.top)) available.push(tryTop)
+      // 英雄弹幕：只要位置能放下就行，不管有没有普通弹幕占用
+      if (target.isHero || !occupied.some(r => tryTop < r.bottom && tryBottom > r.top)) {
+        available.push(tryTop)
+      }
     }
+
     return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : undefined
   }
   if (target.mode === 0) {

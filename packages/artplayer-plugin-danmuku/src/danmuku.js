@@ -255,9 +255,6 @@ export default class Danmuku {
     this.filter('wait', (danmu) => {
       if (currentTime + 0.1 >= danmu.time && danmu.time >= currentTime - 0.1) {
         result.push(danmu)
-        if (result.length <= 2) {
-          debug('readys 匹配:', { text: danmu.text, time: danmu.time, currentTime })
-        }
       }
     })
 
@@ -704,6 +701,19 @@ export default class Danmuku {
                 danmu.$ref.style.visibility = 'visible'
                 danmu.$ref.dataset.mode = danmu.mode
                 danmu.$ref.dataset.id = danmu.id || ''
+
+                // 英雄弹幕：清除与它重叠的普通顶部弹幕
+                if (danmu._isHero) {
+                  const heroBottom = finalTop + danmu.$ref.clientHeight
+                  this.filter('emit', (other) => {
+                    if (other === danmu || other.mode !== 1 || other._isHero) return
+                    const otherTop = other.top ?? other.$ref.offsetTop
+                    const otherBottom = otherTop + (other.$ref?.clientHeight || 0)
+                    if (finalTop < otherBottom && heroBottom > otherTop) {
+                      this.makeWait(other)
+                    }
+                  })
+                }
 
                 // 固定弹幕诊断日志
                 switch (danmu.mode) {
