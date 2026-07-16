@@ -57,31 +57,20 @@ export default class Template {
             <div class="art-settings"></div>
             <div class="art-info">
               <div class="art-info-panel">
+                <div class="art-info-header">统计信息</div>
+                <div class="art-info-divider"></div>
                 <div class="art-info-item">
-                  <div class="art-info-title">Player version:</div>
-                  <div class="art-info-content">${version}</div>
+                  <div class="art-info-title">Dropped Frames:</div>
+                  <div class="art-info-content" data-info="droppedFrames">--</div>
                 </div>
                 <div class="art-info-item">
-                  <div class="art-info-title">Video url:</div>
-                  <div class="art-info-content" data-video="currentSrc"></div>
+                  <div class="art-info-title">Video Resolution:</div>
+                  <div class="art-info-content" data-info="resolution">--</div>
                 </div>
-                <div class="art-info-item">
-                  <div class="art-info-title">Video volume:</div>
-                  <div class="art-info-content" data-video="volume"></div>
-                </div>
-                <div class="art-info-item">
-                  <div class="art-info-title">Video time:</div>
-                  <div class="art-info-content" data-video="currentTime"></div>
-                </div>
-                <div class="art-info-item">
-                  <div class="art-info-title">Video duration:</div>
-                  <div class="art-info-content" data-video="duration"></div>
-                </div>
-                <div class="art-info-item">
-                  <div class="art-info-title">Video resolution:</div>
-                  <div class="art-info-content">
-                    <span data-video="videoWidth"></span> x <span data-video="videoHeight"></span>
-                  </div>
+                <div class="art-info-item art-info-speed-row">
+                  <div class="art-info-title">Video Speed:</div>
+                  <canvas class="art-info-speed-chart" width="200" height="20"></canvas>
+                  <div class="art-info-content" data-info="speed">--</div>
                 </div>
               </div>
               <div class="art-info-close">[x]</div>
@@ -125,6 +114,7 @@ export default class Template {
     this.$infoPanel = this.query('.art-info-panel')
     this.$infoClose = this.query('.art-info-close')
     this.$contextmenu = this.query('.art-contextmenus')
+    this.$speedChart = this.query('.art-info-speed-chart')
 
     if (option.proxy) {
       const video = option.proxy.call(this.art, this.art)

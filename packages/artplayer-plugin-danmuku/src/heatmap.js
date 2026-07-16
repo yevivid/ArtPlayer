@@ -1,3 +1,12 @@
+const DEBUG = false
+function debug(...args) {
+  if (DEBUG)
+    console.log('[Hero]', ...args)
+}
+function log(...args) {
+  console.log('[Hero]', ...args)
+}
+
 const lib = {
   map(value, inMin, inMax, outMin, outMax) {
     return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin
@@ -83,7 +92,7 @@ export default function heatmap(art, danmuku, option) {
 
         const videoSrc = art.option.url || ''
         const videoName = videoSrc.split('/').pop() || '未知'
-        console.log(`[Heatmap] 生成热力图 | 触发: ${reason} | 视频: ${videoName} | 时长: ${Math.round(art.duration)}s | 弹幕数: ${danmuku.queue.length}`)
+        debug(`[Heatmap] 生成热力图 | 触发: ${reason} | 视频: ${videoName} | 时长: ${Math.round(art.duration)}s | 弹幕数: ${danmuku.queue.length}`)
 
         const svg = {
           w: $heatmap.offsetWidth,
@@ -147,7 +156,7 @@ export default function heatmap(art, danmuku, option) {
         // 2. 密度缩放：根据平均弹幕密度缩放热力图高度
         const avgCount = counts.reduce((a, b) => a + b, 0) / counts.length
         const densityScale = Math.max(0.3, Math.min(1, avgCount / options.densityReference))
-        console.log(`[Heatmap] 采样点: ${points.length} | 平均弹幕: ${avgCount.toFixed(1)} | 阈值: ${hotThreshold} | 密度缩放: ${densityScale.toFixed(2)}`)
+        debug(`[Heatmap] 采样点: ${points.length} | 平均弹幕: ${avgCount.toFixed(1)} | 阈值: ${hotThreshold} | 密度缩放: ${densityScale.toFixed(2)}`)
 
         // 3. 布局参数（按密度缩放）
         const minHeight = Math.floor(svg.h * 0.05 * densityScale)

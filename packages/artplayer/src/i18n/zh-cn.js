@@ -35,6 +35,12 @@ const zhCn = {
   'Jump Play': '跳转播放',
   'AirPlay': '隔空播放',
   'AirPlay Not Available': '隔空播放不可用',
+  'Frame Rate': '帧率',
+  'Dropped Frames': '丢帧数',
+  'Total Frames': '总帧数',
+  'Buffer': '缓冲',
+  'Network': '网络',
+  'Ready State': '就绪状态',
 }
 
 export default zhCn

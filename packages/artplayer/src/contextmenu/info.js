@@ -3,7 +3,9 @@ export default function info(option) {
     ...option,
     html: art.i18n.get('Video Info'),
     click: (contextmenu) => {
-      art.info.show = true
+      if (art.info) {
+        art.info.show = true
+      }
       contextmenu.show = false
     },
   })

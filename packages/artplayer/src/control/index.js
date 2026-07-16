@@ -10,6 +10,7 @@ import {
   isMobile,
   removeClass,
   sleep,
+  setStyles,
 } from '../utils'
 import Component from '../utils/component'
 import airplay from './airplay'
@@ -195,6 +196,55 @@ export default class Control extends Component {
     for (let index = 0; index < option.controls.length; index++) {
       this.add(option.controls[index])
     }
+
+    // Add resolution to controls-center, before danmuku plugin
+    this.addResolution()
+  }
+
+  addResolution() {
+    const { $controlsCenter } = this.art.template
+    const $resolution = createElement('div')
+    addClass($resolution, 'art-control-resolution')
+    setStyles($resolution, {
+      color: '#fff',
+      fontSize: '12px',
+      whiteSpace: 'nowrap',
+      flexShrink: '0',
+      marginRight: '24px',
+    })
+
+    let lastFrameCount = 0
+    let lastTime = Date.now()
+    let currentFps = 0
+
+    const update = () => {
+      const width = this.art.video.videoWidth
+      const height = this.art.video.videoHeight
+      if (width && height) {
+        if (this.art.video.getVideoPlaybackQuality) {
+          const quality = this.art.video.getVideoPlaybackQuality()
+          const currentFrameCount = quality.totalVideoFrames || 0
+          const now = Date.now()
+          const timeDiff = (now - lastTime) / 1000
+
+          if (timeDiff >= 1) {
+            currentFps = Math.round((currentFrameCount - lastFrameCount) / timeDiff)
+            lastFrameCount = currentFrameCount
+            lastTime = now
+          }
+        }
+        $resolution.textContent = `${width}×${height}@${currentFps || '--'}`
+      }
+      else {
+        $resolution.textContent = '--'
+      }
+    }
+
+    this.art.on('video:loadedmetadata', update)
+    this.art.on('video:timeupdate', update)
+
+    // Insert as first child of art-controls-center (before danmuku plugin)
+    $controlsCenter.insertBefore($resolution, $controlsCenter.firstChild)
   }
 
   add(getOption) {
