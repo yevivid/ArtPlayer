@@ -203,48 +203,109 @@ export default class Control extends Component {
 
   addResolution() {
     const { $controlsCenter } = this.art.template
-    const $resolution = createElement('div')
-    addClass($resolution, 'art-control-resolution')
-    setStyles($resolution, {
-      color: '#fff',
-      fontSize: '12px',
-      whiteSpace: 'nowrap',
-      flexShrink: '0',
-      marginRight: '24px',
-    })
 
+    // Wrapper - position: relative for panel positioning
+    const $wrapper = createElement('div')
+    addClass($wrapper, 'art-control-resolution-wrapper')
+
+    // Button - shows "1080P"
+    const $btn = createElement('div')
+    addClass($btn, 'art-control-resolution-btn')
+    $btn.textContent = '--'
+
+    // Hover panel
+    const $panel = createElement('div')
+    addClass($panel, 'art-control-resolution-panel')
+
+    const makeRow = (label) => {
+      const $row = createElement('div')
+      addClass($row, 'art-resolution-row')
+      const $label = createElement('span')
+      addClass($label, 'art-resolution-label')
+      $label.textContent = label
+      const $value = createElement('span')
+      addClass($value, 'art-resolution-value')
+      $value.textContent = '--'
+      $row.appendChild($label)
+      $row.appendChild($value)
+      $panel.appendChild($row)
+      return $value
+    }
+
+    const $resValue = makeRow('分辨率')
+    const $fpsValue = makeRow('帧率')
+    const $bitrateValue = makeRow('码率')
+
+    $wrapper.appendChild($panel)
+    $wrapper.appendChild($btn)
+
+    // FPS state
     let lastFrameCount = 0
     let lastTime = Date.now()
     let currentFps = 0
+
+    // Resolution tier
+    const getResolutionTier = (height) => {
+      if (height <= 360) return '360P'
+      if (height <= 480) return '480P'
+      if (height <= 540) return '540P'
+      if (height <= 720) return '720P'
+      if (height <= 1080) return '1080P'
+      if (height <= 1440) return '2K'
+      if (height <= 2160) return '4K'
+      if (height <= 4320) return '8K'
+      return `${height}P`
+    }
+
+    // Bitrate state - fetch file size, calculate average bitrate
+    let videoBitrate = 0
+
+    const fetchBitrate = () => {
+      const videoSrc = this.art.video.currentSrc
+      const duration = this.art.video.duration
+      if (!videoSrc || !duration) return
+
+      fetch(videoSrc, { method: 'HEAD' })
+        .then(res => {
+          const size = Number(res.headers.get('content-length'))
+          if (size > 0) {
+            videoBitrate = (size * 8) / duration / 1000
+          }
+        })
+        .catch(() => {})
+    }
 
     const update = () => {
       const width = this.art.video.videoWidth
       const height = this.art.video.videoHeight
       if (width && height) {
+        // FPS
         if (this.art.video.getVideoPlaybackQuality) {
           const quality = this.art.video.getVideoPlaybackQuality()
           const currentFrameCount = quality.totalVideoFrames || 0
           const now = Date.now()
           const timeDiff = (now - lastTime) / 1000
-
           if (timeDiff >= 1) {
             currentFps = Math.round((currentFrameCount - lastFrameCount) / timeDiff)
             lastFrameCount = currentFrameCount
             lastTime = now
           }
         }
-        $resolution.textContent = `${width}×${height}@${currentFps || '--'}`
-      }
-      else {
-        $resolution.textContent = '--'
+
+        $btn.textContent = getResolutionTier(height)
+        $resValue.textContent = `${width}×${height}`
+        $fpsValue.textContent = `${currentFps || '--'} fps`
+        $bitrateValue.textContent = videoBitrate > 0 ? `${Math.round(videoBitrate)} Kbps` : '--'
       }
     }
 
-    this.art.on('video:loadedmetadata', update)
+    this.art.on('video:loadedmetadata', () => {
+      fetchBitrate()
+      update()
+    })
     this.art.on('video:timeupdate', update)
 
-    // Insert as first child of art-controls-center (before danmuku plugin)
-    $controlsCenter.insertBefore($resolution, $controlsCenter.firstChild)
+    $controlsCenter.insertBefore($wrapper, $controlsCenter.firstChild)
   }
 
   add(getOption) {
