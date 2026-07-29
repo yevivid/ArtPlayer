@@ -1,4 +1,6 @@
-// ========== WASM 相似度检测（内联，避免 Blob URL Worker 的 import 问题） ==========
+// ========== WASM 相似度检测 ==========
+import { preprocessDefault as preprocess } from './preprocess-core.js'
+
 let wasmExports = null
 let wasmMemory = null
 let HEAP16 = null
@@ -46,13 +48,15 @@ async function initWasm(wasmUrl) {
 
   // 分配 UTF-16 缓冲区
   ptrBuf = wasmExports.malloc(MAX_STRING_LEN * 2 + 7)
-  if (ptrBuf % 2) ptrBuf++
+  if (ptrBuf % 2)
+    ptrBuf++
 
   return true
 }
 
 function stringToUTF16(str, ptr, maxBytes) {
-  if (ptr % 2) throw new Error('Pointer must be aligned to two bytes')
+  if (ptr % 2)
+    throw new Error('Pointer must be aligned to two bytes')
   const maxChars = Math.floor((maxBytes - 2) / 2)
   const len = Math.min(str.length, maxChars)
   for (let i = 0; i < len; i++) {
@@ -69,7 +73,8 @@ function beginChunk(maxDist, maxCosine, trimPinyin, crossMode) {
 function detectSimilarity(str, mode, indexL) {
   stringToUTF16(str, ptrBuf, MAX_STRING_LEN * 2)
   const ret = wasmExports.check_similar(mode, indexL)
-  if (ret === 0) return null
+  if (ret === 0)
+    return null
   const unsigned = ret >>> 0
   const reason = unsigned >>> 30
   const dist = (unsigned >>> 19) & ((1 << 11) - 1)
@@ -78,56 +83,10 @@ function detectSimilarity(str, mode, indexL) {
   return { reason: REASON[reason] || 'unknown', dist, idxDiff }
 }
 
-// ========== 预处理 ==========
-const ENDING_CHARS = new Set('.。,，/?？!！…~～@^、+=-_♂♀ ')
-const TRIM_EXTRA_SPACE_RE = /[ \u3000]+/g
-const TRIM_CJK_SPACE_RE = /([\u3000-\u9FFF\uFF00-\uFFEF]) (?=[\u3000-\u9FFF\uFF00-\uFFEF])/g
-const WIDTH_ENTRIES = [
-  ['\u3000', ' '],
-  ['１', '1'], ['２', '2'], ['３', '3'], ['４', '4'], ['５', '5'],
-  ['６', '6'], ['７', '7'], ['８', '8'], ['９', '9'], ['０', '0'],
-  ['！', '!'], ['＠', '@'], ['＃', '#'], ['＄', '$'], ['％', '%'],
-  ['＾', '^'], ['＆', '&'], ['＊', '*'], ['（', '('], ['）', ')'],
-  ['－', '-'], ['＝', '='], ['＿', '_'], ['＋', '+'], ['［', '['],
-  ['］', ']'], ['｛', '{'], ['｝', '}'], ['；', ';'], ['：', ':'],
-  ['，', ','], ['．', '.'], ['／', '/'], ['＜', '<'], ['＞', '>'],
-  ['？', '?'], ['｜', '|'], ['～', '~'],
-  ['ｑ', 'q'], ['ｗ', 'w'], ['ｅ', 'e'], ['ｒ', 'r'], ['ｔ', 't'],
-  ['ｙ', 'y'], ['ｕ', 'u'], ['ｉ', 'i'], ['ｏ', 'o'], ['ｐ', 'p'],
-  ['ａ', 'a'], ['ｓ', 's'], ['ｄ', 'd'], ['ｆ', 'f'], ['ｇ', 'g'],
-  ['ｈ', 'h'], ['ｊ', 'j'], ['ｋ', 'k'], ['ｌ', 'l'], ['ｚ', 'z'],
-  ['ｘ', 'x'], ['ｃ', 'c'], ['ｖ', 'v'], ['ｂ', 'b'], ['ｎ', 'n'],
-  ['ｍ', 'm'],
-  ['Ｑ', 'Q'], ['Ｗ', 'W'], ['Ｅ', 'E'], ['Ｒ', 'R'], ['Ｔ', 'T'],
-  ['Ｙ', 'Y'], ['Ｕ', 'U'], ['Ｉ', 'I'], ['Ｏ', 'O'], ['Ｐ', 'P'],
-  ['Ａ', 'A'], ['Ｓ', 'S'], ['Ｄ', 'D'], ['Ｆ', 'F'], ['Ｇ', 'G'],
-  ['Ｈ', 'H'], ['Ｊ', 'J'], ['Ｋ', 'K'], ['Ｌ', 'L'], ['Ｚ', 'Z'],
-  ['Ｘ', 'X'], ['Ｃ', 'C'], ['Ｖ', 'V'], ['Ｂ', 'B'], ['Ｎ', 'N'],
-  ['Ｍ', 'M'],
-]
-const WIDTH_TABLE = new Map(WIDTH_ENTRIES)
-const DEFAULT_FORCELIST = [[/^23{2,}$/, '23333'], [/^6{3,}$/, '66666']]
-
-function preprocess(text) {
-  if (!text || typeof text !== 'string') return text
-  let len = text.length
-  while (len > 0 && ENDING_CHARS.has(text.charAt(len - 1))) len--
-  if (len === 0) len = text.length
-  let result = ''
-  for (let i = 0; i < len; i++) {
-    const c = text.charAt(i)
-    result += WIDTH_TABLE.get(c) || c
-  }
-  result = result.replace(TRIM_EXTRA_SPACE_RE, ' ').replace(TRIM_CJK_SPACE_RE, '$1')
-  for (const [pattern, replacement] of DEFAULT_FORCELIST) {
-    if (pattern.test(result)) { result = result.replace(pattern, replacement); break }
-  }
-  return result
-}
-
 // ========== 弹幕合并 ==========
 function selectMedianLength(strs) {
-  if (strs.length === 1) return strs[0]
+  if (strs.length === 1)
+    return strs[0]
   const sorted = [...strs].sort((a, b) => a.length - b.length)
   return sorted[Math.floor(sorted.length / 2)]
 }
@@ -139,14 +98,15 @@ function processChunk(chunkItems, opts) {
   const THRESHOLD_MS = threshold * 1000
   beginChunk(maxDist, maxCosine, true, true)
   const storage = []
-  let indexL = 0, indexR = 0
+  let indexL = 0; let indexR = 0
   for (let i = 0; i < chunkItems.length; i++) {
     const dm = chunkItems[i]
     const dmTimeMs = (dm.time || 0) * 1000
     const normalized = dm._normalizedText || dm.text
     while (indexL < indexR) {
       const peeked = storage[indexL]
-      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS) break
+      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS)
+        break
       indexL++
     }
     const sim = detectSimilarity(normalized, dm.mode || 0, indexL)
@@ -154,11 +114,13 @@ function processChunk(chunkItems, opts) {
       const targetIdx = indexR - sim.idxDiff
       if (targetIdx >= 0 && targetIdx < storage.length) {
         storage[targetIdx].items.push(dm)
-      } else {
+      }
+      else {
         storage[indexR] = { timeMs: dmTimeMs, items: [dm] }
         indexR++
       }
-    } else {
+    }
+    else {
       storage[indexR] = { timeMs: dmTimeMs, items: [dm] }
       indexR++
     }
@@ -168,7 +130,8 @@ function processChunk(chunkItems, opts) {
 
 function mergeDanmuku(danmuku, options = {}) {
   const { threshold = 30, maxDist = 5, maxCosine = 45 } = options
-  if (!danmuku || danmuku.length === 0) return []
+  if (!danmuku || danmuku.length === 0)
+    return []
   const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0))
   const opts = { threshold, maxDist, maxCosine }
   const allClusters = []
@@ -185,14 +148,18 @@ function mergeDanmuku(danmuku, options = {}) {
       const dm = { ...cluster.items[0] }
       delete dm._normalizedText
       result.push(dm)
-    } else {
+    }
+    else {
       const textCounts = new Map()
       for (const item of cluster.items) {
         const t = item._normalizedText || item.text
         textCounts.set(t, (textCounts.get(t) || 0) + 1)
       }
       let maxCount = 0
-      for (const [, count] of textCounts) { if (count > maxCount) maxCount = count }
+      for (const [, count] of textCounts) {
+        if (count > maxCount)
+          maxCount = count
+      }
       const chosenText = selectMedianLength(
         [...textCounts.entries()].filter(([, c]) => c === maxCount).map(([t]) => t),
       )
@@ -216,7 +183,8 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
   if (target.mode === 1) {
     const totalTracks = Math.floor((maxTop - marginTop) / trackHeight)
     const normalCount = visibles.filter(item => item.mode === 1 && !item.isHero).length
-    if (!target.isHero && normalCount >= Math.floor(totalTracks / 2)) return undefined
+    if (!target.isHero && normalCount >= Math.floor(totalTracks / 2))
+      return undefined
 
     // 收集所有已占用的顶部弹幕位置
     const occupied = visibles.filter(item => item.mode === 1 && item.top < maxTop && (item.top + item.height) > marginTop)
@@ -240,17 +208,23 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
     rolling.forEach((d) => {
       const rightEdge = d.left + d.width
       const currentTop = Math.round(d.top)
-      if (!occupiedTracks.has(currentTop) || rightEdge > occupiedTracks.get(currentTop)) occupiedTracks.set(currentTop, rightEdge)
+      if (!occupiedTracks.has(currentTop) || rightEdge > occupiedTracks.get(currentTop))
+        occupiedTracks.set(currentTop, rightEdge)
     })
     const allTrackPositions = []
     for (let trackTop = marginTop; trackTop + target.height <= maxTop; trackTop += trackHeight) allTrackPositions.push(trackTop)
-    if (allTrackPositions.length === 0) return undefined
+    if (allTrackPositions.length === 0)
+      return undefined
     const availableTracks = []
     for (const trackTop of allTrackPositions) {
       if (!occupiedTracks.has(trackTop)) { availableTracks.push(trackTop) }
-      else { const lastRight = occupiedTracks.get(trackTop); if (lastRight + minHorizontalGap <= clientWidth) availableTracks.push(trackTop) }
+      else {
+        const lastRight = occupiedTracks.get(trackTop); if (lastRight + minHorizontalGap <= clientWidth)
+          availableTracks.push(trackTop)
+      }
     }
-    if (availableTracks.length > 0) return availableTracks[Math.floor(Math.random() * availableTracks.length)]
+    if (availableTracks.length > 0)
+      return availableTracks[Math.floor(Math.random() * availableTracks.length)]
     if (antiOverlap && rolling.length > 0) {
       const sortedTracks = Array.from(occupiedTracks.keys()).sort((a, b) => a - b)
       const virtualDanmus = sortedTracks.map(top => ({ top, height: target.height }))
@@ -260,9 +234,11 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
       for (let i = 1; i < virtualDanmus.length; i++) {
         const prevBottom = virtualDanmus[i - 1].top + virtualDanmus[i - 1].height
         const diff = virtualDanmus[i].top - prevBottom
-        if (diff >= target.height + 18 && prevBottom + target.height <= maxTop) availableGaps.push(prevBottom)
+        if (diff >= target.height + 18 && prevBottom + target.height <= maxTop)
+          availableGaps.push(prevBottom)
       }
-      if (availableGaps.length > 0) return availableGaps[Math.floor(Math.random() * availableGaps.length)]
+      if (availableGaps.length > 0)
+        return availableGaps[Math.floor(Math.random() * availableGaps.length)]
     }
     return undefined
   }
@@ -272,7 +248,8 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
 // ========== 消息分发 ==========
 onmessage = async (event) => {
   const { data } = event
-  if (!data.id || !data.type) return
+  if (!data.id || !data.type)
+    return
 
   let result
   if (data.type === 'getDanmuTop') {
@@ -288,13 +265,15 @@ onmessage = async (event) => {
     if (options.preprocess) {
       for (let i = 0; i < danmus.length; i++) {
         const dm = danmus[i]
-        if (dm && dm.text) dm._normalizedText = preprocess(dm.text)
+        if (dm && dm.text)
+          dm._normalizedText = preprocess(dm.text)
       }
     }
     // 合并
     if (options.merge && danmus.length > 0 && wasmExports) {
       result = mergeDanmuku(danmus, options)
-    } else {
+    }
+    else {
       result = danmus
     }
   }
