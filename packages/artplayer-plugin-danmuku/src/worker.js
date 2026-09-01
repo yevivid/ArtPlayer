@@ -4,8 +4,6 @@ import { preprocessDefault as preprocess } from './preprocess-core.js'
 let wasmExports = null
 let wasmMemory = null
 let HEAP16 = null
-let HEAPU8 = null
-let HEAP32 = null
 let ptrBuf = 0
 const MAX_STRING_LEN = 16005
 
@@ -38,8 +36,6 @@ async function initWasm(wasmUrl) {
   // 初始化内存视图
   const buffer = wasmMemory.buffer
   HEAP16 = new Int16Array(buffer)
-  HEAPU8 = new Uint8Array(buffer)
-  HEAP32 = new Int32Array(buffer)
 
   // 调用 __wasm_call_ctors
   if (wasmExports.__wasm_call_ctors) {
@@ -98,7 +94,8 @@ function processChunk(chunkItems, opts) {
   const THRESHOLD_MS = threshold * 1000
   beginChunk(maxDist, maxCosine, true, true)
   const storage = []
-  let indexL = 0; let indexR = 0
+  let indexL = 0
+  let indexR = 0
   for (let i = 0; i < chunkItems.length; i++) {
     const dm = chunkItems[i]
     const dmTimeMs = (dm.time || 0) * 1000
@@ -217,9 +214,12 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
       return undefined
     const availableTracks = []
     for (const trackTop of allTrackPositions) {
-      if (!occupiedTracks.has(trackTop)) { availableTracks.push(trackTop) }
+      if (!occupiedTracks.has(trackTop)) {
+        availableTracks.push(trackTop)
+      }
       else {
-        const lastRight = occupiedTracks.get(trackTop); if (lastRight + minHorizontalGap <= clientWidth)
+        const lastRight = occupiedTracks.get(trackTop)
+        if (lastRight + minHorizontalGap <= clientWidth)
           availableTracks.push(trackTop)
       }
     }

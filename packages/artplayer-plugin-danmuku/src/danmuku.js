@@ -1,11 +1,12 @@
 import { bilibiliDanmuParseFromUrl } from './bilibili'
 import { scheduleHeroDanmuku } from './consensus-scheduler'
-import DanmuWorker from './worker.js?worker&inline'
 import MergeWorker from './merge-worker.js?worker&inline'
+import DanmuWorker from './worker.js?worker&inline'
 
 // 根据弹幕数量和 CPU 核心数决定并行 Worker 数量
 function getWorkerCount(danmukuCount) {
-  if (danmukuCount < 5000) return 1
+  if (danmukuCount < 5000)
+    return 1
   const hw = navigator.hardwareConcurrency || 4
   return Math.min(hw - 1, 8)
 }
@@ -14,12 +15,8 @@ function getWorkerCount(danmukuCount) {
 const DEBUG = false
 function debug(...args) {
   if (DEBUG)
+    // eslint-disable-next-line no-console
     console.log('[Danmuku]', ...args)
-}
-
-// 始终输出的关键日志
-function log(...args) {
-  console.log('[Danmuku]', ...args)
 }
 
 export default class Danmuku {
@@ -40,6 +37,7 @@ export default class Danmuku {
     this.index = 0 // 弹幕索引
     this._pendingMessages = new Map() // postMessage 回调映射
     this.loading = false // 防止重复 load
+    this._playbackRate = Number(art.playbackRate) || 1 // 当前播放倍速，用于同步弹幕速度
 
     // 格式化后的配置项
     this.option = Danmuku.option
@@ -66,11 +64,13 @@ export default class Danmuku {
     this.reset = this.reset.bind(this)
     this.resize = this.resize.bind(this)
     this.destroy = this.destroy.bind(this)
+    this.rateChange = this.rateChange.bind(this)
 
     // 监听事件
     art.on('video:playing', this.start)
     art.on('video:pause', this.stop)
     art.on('video:waiting', this.stop)
+    art.on('video:ratechange', this.rateChange)
     art.on('destroy', this.destroy)
     art.on('resize', this.resize)
 
@@ -316,7 +316,8 @@ export default class Danmuku {
 
   // 加载弹幕
   async load(danmuku) {
-    if (this.loading) return
+    if (this.loading)
+      return
     this.loading = true
 
     const { errorHandle } = this.utils
@@ -582,7 +583,7 @@ export default class Danmuku {
       for (let i = 0; i < workerCount; i++) {
         const start = minTime + i * interval
         const end = i === workerCount - 1 ? Infinity : start + interval
-        const chunk = sorted.filter(d => {
+        const chunk = sorted.filter((d) => {
           const t = d.time || 0
           return t >= start && t < end
         })
@@ -602,7 +603,8 @@ export default class Danmuku {
 
       const onWorkerReady = () => {
         initialized++
-        if (initialized < workers.length) return
+        if (initialized < workers.length)
+          return
 
         // 所有 Worker 初始化完成，并行处理
         let completed = 0
@@ -610,7 +612,8 @@ export default class Danmuku {
 
         const checkDone = () => {
           completed++
-          if (completed < workers.length) return
+          if (completed < workers.length)
+            return
           // 全部完成，终止 Worker 并合并结果
           workers.forEach(w => w.terminate())
           const merged = results.flat()
@@ -815,7 +818,8 @@ export default class Danmuku {
                 if (danmu._isHero) {
                   const heroBottom = finalTop + danmu.$ref.clientHeight
                   this.filter('emit', (other) => {
-                    if (other === danmu || other.mode !== 1 || other._isHero) return
+                    if (other === danmu || other.mode !== 1 || other._isHero)
+                      return
                     const otherTop = other.top ?? other.$ref.offsetTop
                     const otherBottom = otherTop + (other.$ref?.clientHeight || 0)
                     if (finalTop < otherBottom && heroBottom > otherTop) {
@@ -894,6 +898,45 @@ export default class Danmuku {
         default:
           break
       }
+    })
+
+    return this
+  }
+
+  // 播放倍速变化时，同步调整飞行中弹幕的速度（synchronousPlayback）
+  rateChange() {
+    const newRate = Number(this.art.playbackRate) || 1
+    const oldRate = this._playbackRate
+    this._playbackRate = newRate
+
+    if (!this.option.synchronousPlayback || newRate === oldRate)
+      return this
+
+    // 剩余距离不变，速度随倍速缩放，剩余时长按反比换算（等价于按新倍速重新 spawn）
+    const ratio = oldRate / newRate
+
+    this.filter('emit', (danmu) => {
+      danmu.$restTime *= ratio
+      switch (danmu.mode) {
+        // 滚动弹幕：冻结当前位置，按新速度无缝走到终点
+        case 0: {
+          const currentX = this.getLeft(danmu.$ref) - this.getLeft(this.$player)
+          danmu.$ref.style.transition = 'transform 0s linear 0s'
+          danmu.$ref.style.transform = `translateX(${currentX}px)`
+          // eslint-disable-next-line no-unused-expressions
+          danmu.$ref.clientWidth // 强制重排，确保新过渡从当前位置起步
+          danmu.$ref.style.transition = `transform ${danmu.$restTime}s linear 0s`
+          danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`
+          break
+        }
+        default:
+          break
+      }
+    })
+
+    // 暂停中的弹幕只换算剩余时长，恢复时 continue() 会按新速度续播
+    this.filter('stop', (danmu) => {
+      danmu.$restTime *= ratio
     })
 
     return this
@@ -980,7 +1023,8 @@ export default class Danmuku {
     this.art.off('video:playing', this.start)
     this.art.off('video:pause', this.stop)
     this.art.off('video:waiting', this.stop)
-    this.art.off('resize', this.reset)
+    this.art.off('video:ratechange', this.rateChange)
+    this.art.off('resize', this.resize)
     this.art.off('destroy', this.destroy)
     this.art.emit('artplayerPluginDanmuku:destroy')
   }

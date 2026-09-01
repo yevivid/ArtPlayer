@@ -1449,21 +1449,30 @@ class Control extends Component {
     let lastTime = Date.now();
     let currentFps = 0;
     const getResolutionTier = (height) => {
-      if (height <= 360) return "360P";
-      if (height <= 480) return "480P";
-      if (height <= 540) return "540P";
-      if (height <= 720) return "720P";
-      if (height <= 1080) return "1080P";
-      if (height <= 1440) return "2K";
-      if (height <= 2160) return "4K";
-      if (height <= 4320) return "8K";
+      if (height <= 360)
+        return "360P";
+      if (height <= 480)
+        return "480P";
+      if (height <= 540)
+        return "540P";
+      if (height <= 720)
+        return "720P";
+      if (height <= 1080)
+        return "1080P";
+      if (height <= 1440)
+        return "2K";
+      if (height <= 2160)
+        return "4K";
+      if (height <= 4320)
+        return "8K";
       return `${height}P`;
     };
     let videoBitrate = 0;
     const fetchBitrate = () => {
       const videoSrc = this.art.video.currentSrc;
       const duration = this.art.video.duration;
-      if (!videoSrc || !duration) return;
+      if (!videoSrc || !duration)
+        return;
       fetch(videoSrc, { method: "HEAD" }).then((res) => {
         const size = Number(res.headers.get("content-length"));
         if (size > 0) {
@@ -2118,7 +2127,8 @@ class Info extends Component {
     const $infos = queryAll("[data-info]", $infoPanel) || [];
     self.art.on("destroy", () => clearTimeout(timer));
     const calculateFps = () => {
-      if (!$video.getVideoPlaybackQuality) return "--";
+      if (!$video.getVideoPlaybackQuality)
+        return "--";
       const quality = $video.getVideoPlaybackQuality();
       const currentFrameCount = quality.totalVideoFrames || 0;
       const now = Date.now();
@@ -2133,7 +2143,8 @@ class Info extends Component {
     const calculateSpeed = () => {
       const now = Date.now();
       const timeDiff = (now - self.lastSpeedTime) / 1e3;
-      if (timeDiff < 0.5) return self.currentSpeed;
+      if (timeDiff < 0.5)
+        return self.currentSpeed;
       let totalBuffered = 0;
       const buffered = $video.buffered;
       if (buffered && buffered.length > 0) {
@@ -2162,12 +2173,14 @@ class Info extends Component {
       return `${speed.toFixed(0)} bps`;
     };
     const drawChart = () => {
-      if (!$speedChart) return;
+      if (!$speedChart)
+        return;
       const ctx = $speedChart.getContext("2d");
       const width = $speedChart.width;
       const height = $speedChart.height;
       ctx.clearRect(0, 0, width, height);
-      if (self.speedHistory.length < 2) return;
+      if (self.speedHistory.length < 2)
+        return;
       const maxSpeed = Math.max(...self.speedHistory, 1);
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;

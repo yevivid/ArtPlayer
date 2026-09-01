@@ -112,7 +112,10 @@ function preprocessDefault(text) {
   }
   result = result.replace(TRIM_EXTRA_SPACE_RE, ' ').replace(TRIM_CJK_SPACE_RE, '$1')
   for (const [pattern, replacement] of DEFAULT_FORCELIST) {
-    if (pattern.test(result)) { result = result.replace(pattern, replacement); break }
+    if (pattern.test(result)) {
+      result = result.replace(pattern, replacement)
+      break
+    }
   }
   return result
 }

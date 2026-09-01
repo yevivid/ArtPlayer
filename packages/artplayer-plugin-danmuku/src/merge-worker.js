@@ -86,7 +86,8 @@ function processChunk(chunkItems, opts) {
   const THRESHOLD_MS = threshold * 1000
   beginChunk(maxDist, maxCosine, true, true)
   const storage = []
-  let indexL = 0; let indexR = 0
+  let indexL = 0
+  let indexR = 0
   for (let i = 0; i < chunkItems.length; i++) {
     const dm = chunkItems[i]
     const dmTimeMs = (dm.time || 0) * 1000

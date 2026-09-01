@@ -1,4 +1,3 @@
-import { isMobile } from '../utils'
 import Component from '../utils/component'
 
 export default class Contextmenu extends Component {

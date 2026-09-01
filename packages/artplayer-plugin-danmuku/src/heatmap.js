@@ -1,10 +1,8 @@
 const DEBUG = false
 function debug(...args) {
   if (DEBUG)
+    // eslint-disable-next-line no-console
     console.log('[Hero]', ...args)
-}
-function log(...args) {
-  console.log('[Hero]', ...args)
 }
 
 const lib = {
@@ -48,7 +46,8 @@ function computeDensity(queue, svgWidth, duration, sampling) {
 
     let count = 0
     for (let i = head; i < sorted.length; i++) {
-      if (sorted[i].time > tEnd) break
+      if (sorted[i].time > tEnd)
+        break
       count++
     }
 
@@ -108,9 +107,9 @@ export default function heatmap(art, danmuku, option) {
           opacity: 0.2,
           smoothing: 0.2,
           flattening: 0.2,
-          timePerPoint: 30,    // 每个采样点覆盖的秒数
+          timePerPoint: 30, // 每个采样点覆盖的秒数
           hotPercentile: 0.75, // 数据的前N百分位视为热区
-          hotExponent: 1.0,    // 热区对比度：<1 压缩，=1 线性，>1 增强
+          hotExponent: 1.0, // 热区对比度：<1 压缩，=1 线性，>1 增强
           densityReference: 100, // 密度参考值：每采样点此数量视为满热度
         }
 
@@ -150,7 +149,8 @@ export default function heatmap(art, danmuku, option) {
         let hotMax = hotThreshold
         for (let i = 0; i < points.length; i++) {
           const count = points[i][1]
-          if (count >= hotThreshold && count > hotMax) hotMax = count
+          if (count >= hotThreshold && count > hotMax)
+            hotMax = count
         }
 
         // 2. 密度缩放：根据平均弹幕密度缩放热力图高度
@@ -171,7 +171,7 @@ export default function heatmap(art, danmuku, option) {
           if (count >= hotThreshold) {
             // 热区：[hotThreshold, hotMax] → [baseline, baseline + hotMaxH]，幂函数映射
             const normalized = (count - hotThreshold) / hotRange
-            points[i][1] = baseline + Math.pow(normalized, options.hotExponent) * hotMaxH
+            points[i][1] = baseline + normalized ** options.hotExponent * hotMaxH
           }
           else {
             // 冷区：[0, hotThreshold] → [minHeight, baseline]，线性映射
@@ -193,9 +193,9 @@ export default function heatmap(art, danmuku, option) {
         }
 
         const bezierCommand = (point, i, a) => {
-            const cps = controlPoint(a[i - 1], a[i - 2], point)
-            const cpe = controlPoint(point, a[i - 1], a[i + 1], true)
-            return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}`
+          const cps = controlPoint(a[i - 1], a[i - 2], point)
+          const cpe = controlPoint(point, a[i - 1], a[i + 1], true)
+          return `C ${cps[0]},${cps[1]} ${cpe[0]},${cpe[1]} ${point[0]},${point[1]}`
         }
 
         // 转换为 SVG 坐标：height → y（从底部算起的高度 → SVG 的 y 坐标）
@@ -205,13 +205,13 @@ export default function heatmap(art, danmuku, option) {
           return [x, y]
         })
 
-        const pathD = pointsPositions.reduce(
-        (acc, e, i, a) =>
+        const pathD = `${pointsPositions.reduce(
+          (acc, e, i, a) =>
             i === 0
-            ? `M ${a[a.length - 1][0]},${svg.h} L ${e[0]},${svg.h} L ${e[0]},${e[1]}`
-            : `${acc} ${bezierCommand(e, i, a)}`,
-        '',
-        ) + ` L ${svg.w},${svg.h} z`;
+              ? `M ${a[a.length - 1][0]},${svg.h} L ${e[0]},${svg.h} L ${e[0]},${e[1]}`
+              : `${acc} ${bezierCommand(e, i, a)}`,
+          '',
+        )} L ${svg.w},${svg.h} z`
 
         $heatmap.innerHTML = `
         <svg viewBox="0 0 ${svg.w} ${svg.h}" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block;">

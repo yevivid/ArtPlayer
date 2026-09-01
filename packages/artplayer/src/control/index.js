@@ -10,7 +10,6 @@ import {
   isMobile,
   removeClass,
   sleep,
-  setStyles,
 } from '../utils'
 import Component from '../utils/component'
 import airplay from './airplay'
@@ -246,14 +245,22 @@ export default class Control extends Component {
 
     // Resolution tier
     const getResolutionTier = (height) => {
-      if (height <= 360) return '360P'
-      if (height <= 480) return '480P'
-      if (height <= 540) return '540P'
-      if (height <= 720) return '720P'
-      if (height <= 1080) return '1080P'
-      if (height <= 1440) return '2K'
-      if (height <= 2160) return '4K'
-      if (height <= 4320) return '8K'
+      if (height <= 360)
+        return '360P'
+      if (height <= 480)
+        return '480P'
+      if (height <= 540)
+        return '540P'
+      if (height <= 720)
+        return '720P'
+      if (height <= 1080)
+        return '1080P'
+      if (height <= 1440)
+        return '2K'
+      if (height <= 2160)
+        return '4K'
+      if (height <= 4320)
+        return '8K'
       return `${height}P`
     }
 
@@ -263,10 +270,11 @@ export default class Control extends Component {
     const fetchBitrate = () => {
       const videoSrc = this.art.video.currentSrc
       const duration = this.art.video.duration
-      if (!videoSrc || !duration) return
+      if (!videoSrc || !duration)
+        return
 
       fetch(videoSrc, { method: 'HEAD' })
-        .then(res => {
+        .then((res) => {
           const size = Number(res.headers.get('content-length'))
           if (size > 0) {
             videoBitrate = (size * 8) / duration / 1000

@@ -1,4 +1,3 @@
-import { version } from '../package.json'
 import { addClass, errorHandle, isMobile, query, replaceElement, supportsFlex } from './utils'
 
 export default class Template {

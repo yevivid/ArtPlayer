@@ -8,9 +8,11 @@ const DEMOTE_THRESHOLD = 5
 const DEBUG = false
 function debug(...args) {
   if (DEBUG)
+    // eslint-disable-next-line no-console
     console.log('[Hero]', ...args)
 }
 function log(...args) {
+  // eslint-disable-next-line no-console
   console.log('[Hero]', ...args)
 }
 

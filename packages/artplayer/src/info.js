@@ -37,7 +37,8 @@ export default class Info extends Component {
     self.art.on('destroy', () => clearTimeout(timer))
 
     const calculateFps = () => {
-      if (!$video.getVideoPlaybackQuality) return '--'
+      if (!$video.getVideoPlaybackQuality)
+        return '--'
       const quality = $video.getVideoPlaybackQuality()
       const currentFrameCount = quality.totalVideoFrames || 0
       const now = Date.now()
@@ -56,7 +57,8 @@ export default class Info extends Component {
       const now = Date.now()
       const timeDiff = (now - self.lastSpeedTime) / 1000
 
-      if (timeDiff < 0.5) return self.currentSpeed
+      if (timeDiff < 0.5)
+        return self.currentSpeed
 
       let totalBuffered = 0
       const buffered = $video.buffered
@@ -93,7 +95,8 @@ export default class Info extends Component {
     }
 
     const drawChart = () => {
-      if (!$speedChart) return
+      if (!$speedChart)
+        return
 
       const ctx = $speedChart.getContext('2d')
       const width = $speedChart.width
@@ -101,7 +104,8 @@ export default class Info extends Component {
 
       ctx.clearRect(0, 0, width, height)
 
-      if (self.speedHistory.length < 2) return
+      if (self.speedHistory.length < 2)
+        return
 
       const maxSpeed = Math.max(...self.speedHistory, 1)
 

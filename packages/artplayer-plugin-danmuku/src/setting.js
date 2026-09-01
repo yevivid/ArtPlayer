@@ -223,30 +223,30 @@ export default class Setting {
       max: 4,
       steps: [
         {
-          name: "极小",
-          value: 5
+          name: '极小',
+          value: 5,
         },
         {
-          name: "较小",
+          name: '较小',
           value: 25,
-          hide: true
+          hide: true,
         },
         {
-          name: "适中",
+          name: '适中',
           value: 45,
         },
         {
-          name: "较大",
+          name: '较大',
           value: 65,
-          hide: true
+          hide: true,
         },
         {
-          name: "极大",
+          name: '极大',
           value: 85,
-        }
+        },
       ],
-      ...this.option.GAP
-    };
+      ...this.option.GAP,
+    }
   }
 
   get MARGIN() {
@@ -255,62 +255,62 @@ export default class Setting {
       max: 4,
       steps: [
         {
-          name: "极少",
-          value: [10, "83%"]
+          name: '极少',
+          value: [10, '83%'],
         },
         {
-          name: "较少",
-          value: [10, "66%"],
-          hide: true
+          name: '较少',
+          value: [10, '66%'],
+          hide: true,
         },
         {
-          name: "半屏",
-          value: [10, "50%"]
+          name: '半屏',
+          value: [10, '50%'],
         },
         {
-          name: "较多",
-          value: [10, "33%"],
-          hide: true
+          name: '较多',
+          value: [10, '33%'],
+          hide: true,
         },
         {
-          name: "满屏",
-          value: [10, "16%"]
-        }
+          name: '满屏',
+          value: [10, '16%'],
+        },
       ],
-      ...this.option.MARGIN
-    };
+      ...this.option.MARGIN,
+    }
   }
 
   get SPEED() {
     return {
-    min: 0,
-    max: 4,
-    steps: [
+      min: 0,
+      max: 4,
+      steps: [
         {
-          name: "极慢",
-          value: 22
+          name: '极慢',
+          value: 22,
         },
         {
-          name: "较慢",
+          name: '较慢',
           value: 18,
-          hide: true
+          hide: true,
         },
         {
-          name: "适中",
+          name: '适中',
           value: 14,
         },
         {
-          name: "较快",
+          name: '较快',
           value: 10,
-          hide: true
+          hide: true,
         },
         {
-          name: "极快",
-          value: 6
+          name: '极快',
+          value: 6,
         },
-    ],
-    ...this.option.SPEED
-    };
+      ],
+      ...this.option.SPEED,
+    }
   }
 
   get COLOR() {
@@ -472,10 +472,12 @@ export default class Setting {
 
   applyHighlight() {
     const { $danmuku } = this.template
-    if (!$danmuku) return
-    if (!this.option.highlight) return
+    if (!$danmuku)
+      return
+    if (!this.option.highlight)
+      return
     $danmuku.style.setProperty('--apd-highlight', this.option.highlight)
-    $danmuku.querySelectorAll('path').forEach(path => {
+    $danmuku.querySelectorAll('path').forEach((path) => {
       const fill = path.getAttribute('fill')
       if (fill && fill.toLowerCase() !== '#ffffff' && fill.toLowerCase() !== '#fff') {
         path.setAttribute('fill', this.option.highlight)
@@ -501,25 +503,27 @@ export default class Setting {
 
     this.slider.margin = this.createSlider({
       ...this.MARGIN,
-      container: this.template.$marginSlider,        // 确保这个在 createTemplate() 中已正确 query
+      container: this.template.$marginSlider, // 确保这个在 createTemplate() 中已正确 query
       findIndex: () => {
         // 精确匹配当前 margin 配置，返回对应 steps 索引
         return this.MARGIN.steps.findIndex(item =>
-          JSON.stringify(item.value) === JSON.stringify(this.option.margin)
-        );
+          JSON.stringify(item.value) === JSON.stringify(this.option.margin),
+        )
       },
       onChange: (index) => {
-        const marginStep = this.MARGIN.steps[index];
-        if (!marginStep) return;
+        const marginStep = this.MARGIN.steps[index]
+        if (!marginStep)
+          return
 
-        const { $marginValue } = this.template;
-        if ($marginValue) $marginValue.textContent = marginStep.name;
+        const { $marginValue } = this.template
+        if ($marginValue)
+          $marginValue.textContent = marginStep.name
 
         this.danmuku.config({
-          margin: marginStep.value   // 必须是数组 [10, "50%"] 或 [10, 10]
-        });
+          margin: marginStep.value, // 必须是数组 [10, "50%"] 或 [10, 10]
+        })
       },
-    });
+    })
 
     this.slider.fontSize = this.createSlider({
       ...this.FONT_SIZE,
@@ -565,13 +569,15 @@ export default class Setting {
       },
       onChange: (index) => {
         const step = this.GAP.steps[index]
-        if (!step) return
+        if (!step)
+          return
 
         const valueEl = this.query('.apd-config-gap .apd-value')
-        if (valueEl) valueEl.textContent = step.name
+        if (valueEl)
+          valueEl.textContent = step.name
 
         this.danmuku.config({
-          gap: step.value
+          gap: step.value,
         })
       },
     })

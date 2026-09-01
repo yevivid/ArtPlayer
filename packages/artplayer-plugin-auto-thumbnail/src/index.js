@@ -8,19 +8,23 @@ const DEBUG = false
 
 // 始终输出的关键日志
 function log(...args) {
+  // eslint-disable-next-line no-console
   console.log('[Thumbnail]', ...args)
 }
 
 // 仅 DEBUG 模式输出的详细日志
 function debug(...args) {
-  if (DEBUG) console.log('[Thumbnail]', ...args)
+  if (DEBUG)
+    // eslint-disable-next-line no-console
+    console.log('[Thumbnail]', ...args)
 }
 
 // 根据视频 URL 构建缩略图目录路径
 function buildThumbnailDir(videoUrl) {
   const lastSlash = Math.max(videoUrl.lastIndexOf('/'), videoUrl.lastIndexOf('\\'))
-  if (lastSlash === -1) return './thumbnails'
-  return videoUrl.substring(0, lastSlash + 1) + 'thumbnails'
+  if (lastSlash === -1)
+    return './thumbnails'
+  return `${videoUrl.substring(0, lastSlash + 1)}thumbnails`
 }
 
 // 检查预生成缩略图是否存在
@@ -36,7 +40,8 @@ async function checkPrebuiltThumbnail(videoUrl) {
       debug('✅ 找到预生成图片')
       return url
     }
-  } catch (e) {
+  }
+  catch (e) {
     debug('请求失败:', e.message)
   }
   debug('❌ 未找到预生成图片')
@@ -65,8 +70,8 @@ function loadFromPrebuiltImage(url) {
 // 动态生成缩略图（回退方案）
 function createThumbnail({ url, width, number }, onProgress) {
   const videoName = url.split('/').pop().replace(/\.[^.]+$/, '')
-  debug(`[${videoName}] 开始动态生成:`, width + 'x' + number)
-  return new Promise((resolve) => {
+  debug(`[${videoName}] 开始动态生成:`, `${width}x${number}`)
+  return new Promise((_resolve) => {
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
     video.muted = true
@@ -185,11 +190,13 @@ export default function artplayerPluginAutoThumbnail(option = {}) {
             }
             log(`✅ [${videoName}] ${prebuiltUrl}`)
             art.emit('artplayerPluginAutoThumbnail:ready', { source: 'prebuilt' })
-          } catch (e) {
+          }
+          catch {
             debug(`[${videoName}] ⚠️ 预生成加载失败，回退到动态生成`)
             startDynamicGeneration(url, baseWidth, number, scale, art)
           }
-        } else {
+        }
+        else {
           debug(`[${videoName}] 未找到预生成图片，开始动态生成`)
           startDynamicGeneration(url, baseWidth, number, scale, art)
         }

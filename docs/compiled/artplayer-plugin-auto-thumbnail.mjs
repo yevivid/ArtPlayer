@@ -11,8 +11,9 @@ function debug(...args) {
 }
 function buildThumbnailDir(videoUrl) {
   const lastSlash = Math.max(videoUrl.lastIndexOf("/"), videoUrl.lastIndexOf("\\"));
-  if (lastSlash === -1) return "./thumbnails";
-  return videoUrl.substring(0, lastSlash + 1) + "thumbnails";
+  if (lastSlash === -1)
+    return "./thumbnails";
+  return `${videoUrl.substring(0, lastSlash + 1)}thumbnails`;
 }
 async function checkPrebuiltThumbnail(videoUrl) {
   const dir = buildThumbnailDir(videoUrl);
@@ -47,7 +48,7 @@ function loadFromPrebuiltImage(url) {
 }
 function createThumbnail({ url, width, number }, onProgress) {
   url.split("/").pop().replace(/\.[^.]+$/, "");
-  return new Promise((resolve) => {
+  return new Promise((_resolve) => {
     const video = document.createElement("video");
     video.crossOrigin = "anonymous";
     video.muted = true;
@@ -147,7 +148,7 @@ function artplayerPluginAutoThumbnail(option = {}) {
             };
             log(`✅ [${videoName}] ${prebuiltUrl}`);
             art.emit("artplayerPluginAutoThumbnail:ready", { source: "prebuilt" });
-          } catch (e) {
+          } catch {
             startDynamicGeneration(url, baseWidth, number, scale, art);
           }
         } else {
