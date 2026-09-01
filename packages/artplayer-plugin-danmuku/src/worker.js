@@ -200,6 +200,8 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
     return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : undefined
   }
   if (target.mode === 0) {
+    // 新弹幕入轨的左边缘：正常发射从屏幕右缘进入；seek 预填充从历史理论位置进入
+    const entryX = target.entryX ?? clientWidth
     const rolling = visibles.filter(item => item.mode === 0)
     const occupiedTracks = new Map()
     rolling.forEach((d) => {
@@ -219,7 +221,7 @@ function getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom
       }
       else {
         const lastRight = occupiedTracks.get(trackTop)
-        if (lastRight + minHorizontalGap <= clientWidth)
+        if (lastRight + minHorizontalGap <= entryX)
           availableTracks.push(trackTop)
       }
     }

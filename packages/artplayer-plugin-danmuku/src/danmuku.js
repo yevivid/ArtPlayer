@@ -38,6 +38,7 @@ export default class Danmuku {
     this._pendingMessages = new Map() // postMessage 回调映射
     this.loading = false // 防止重复 load
     this._playbackRate = Number(art.playbackRate) || 1 // 当前播放倍速，用于同步弹幕速度
+    this._seekGeneration = 0 // seek 批次代际标记，用于丢弃过期的异步预填充
 
     // 格式化后的配置项
     this.option = Danmuku.option
@@ -65,12 +66,14 @@ export default class Danmuku {
     this.resize = this.resize.bind(this)
     this.destroy = this.destroy.bind(this)
     this.rateChange = this.rateChange.bind(this)
+    this.seek = this.seek.bind(this)
 
     // 监听事件
     art.on('video:playing', this.start)
     art.on('video:pause', this.stop)
     art.on('video:waiting', this.stop)
     art.on('video:ratechange', this.rateChange)
+    art.on('video:seeked', this.seek)
     art.on('destroy', this.destroy)
     art.on('resize', this.resize)
 
@@ -701,10 +704,55 @@ export default class Danmuku {
     }
   }
 
-  // 实时更新弹幕
-  update() {
+  // 创建弹幕 DOM 节点并应用基础样式（正常发射与 seek 预填充共用）
+  decorateDanmu(danmu) {
     const { setStyles } = this.utils
 
+    danmu.$ref = this.$ref
+    danmu.$ref.textContent = danmu.text
+
+    if (danmu._mergeCount && danmu._mergeCount > 1) {
+      const mark = document.createElement('span')
+      mark.className = 'art-danmuku-merge-mark'
+      mark.textContent = ` \u2211 ${danmu._mergeCount}`
+      danmu.$ref.appendChild(mark)
+    }
+
+    this.$danmuku.appendChild(danmu.$ref)
+
+    danmu.$ref.style.opacity = this.option.opacity
+    danmu.$ref.style.color = danmu.color
+    danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null
+    danmu.$ref.style.backgroundColor = danmu.border ? 'rgb(0 0 0 / 50%)' : null
+
+    // 英雄弹幕：放大字号 + 阴影
+    if (danmu._isHero) {
+      const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3)
+      danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`
+      danmu.$ref.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)'
+    }
+    else {
+      danmu.$ref.style.fontSize = `${this.fontSize}px`
+    }
+
+    setStyles(danmu.$ref, danmu.style)
+  }
+
+  // 英雄弹幕：清除与它重叠的普通顶部弹幕
+  clearHeroOverlap(danmu, heroTop) {
+    const heroBottom = heroTop + danmu.$ref.clientHeight
+    this.filter('emit', (other) => {
+      if (other === danmu || other.mode !== 1 || other._isHero)
+        return
+      const otherTop = other.top ?? other.$ref.offsetTop
+      const otherBottom = otherTop + (other.$ref?.clientHeight || 0)
+      if (heroTop < otherBottom && heroBottom > otherTop)
+        this.makeWait(other)
+    })
+  }
+
+  // 实时更新弹幕
+  update() {
     this.timer = window.requestAnimationFrame(async () => {
       if (this.art.playing && !this.isHide) {
         // 更新剩余时间 + 回收过期
@@ -738,34 +786,7 @@ export default class Danmuku {
               debug('即将显示:', { text: danmu.text, time: danmu.time })
             }
             const { clientWidth, clientHeight } = this.$player
-            danmu.$ref = this.$ref
-            danmu.$ref.textContent = danmu.text
-
-            if (danmu._mergeCount && danmu._mergeCount > 1) {
-              const mark = document.createElement('span')
-              mark.className = 'art-danmuku-merge-mark'
-              mark.textContent = ` \u2211 ${danmu._mergeCount}`
-              danmu.$ref.appendChild(mark)
-            }
-
-            this.$danmuku.appendChild(danmu.$ref)
-
-            danmu.$ref.style.opacity = this.option.opacity
-            danmu.$ref.style.color = danmu.color
-            danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null
-            danmu.$ref.style.backgroundColor = danmu.border ? 'rgb(0 0 0 / 50%)' : null
-
-            // 英雄弹幕：放大字号 + 阴影
-            if (danmu._isHero) {
-              const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3)
-              danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`
-              danmu.$ref.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)'
-            }
-            else {
-              danmu.$ref.style.fontSize = `${this.fontSize}px`
-            }
-
-            setStyles(danmu.$ref, danmu.style)
+            this.decorateDanmu(danmu)
 
             danmu.$lastStartTime = Date.now()
 
@@ -815,18 +836,8 @@ export default class Danmuku {
                 danmu.$ref.dataset.id = danmu.id || ''
 
                 // 英雄弹幕：清除与它重叠的普通顶部弹幕
-                if (danmu._isHero) {
-                  const heroBottom = finalTop + danmu.$ref.clientHeight
-                  this.filter('emit', (other) => {
-                    if (other === danmu || other.mode !== 1 || other._isHero)
-                      return
-                    const otherTop = other.top ?? other.$ref.offsetTop
-                    const otherBottom = otherTop + (other.$ref?.clientHeight || 0)
-                    if (finalTop < otherBottom && heroBottom > otherTop) {
-                      this.makeWait(other)
-                    }
-                  })
-                }
+                if (danmu._isHero)
+                  this.clearHeroOverlap(danmu, finalTop)
 
                 // 固定弹幕诊断日志
                 switch (danmu.mode) {
@@ -942,6 +953,124 @@ export default class Danmuku {
     return this
   }
 
+  // seek 快照追帧：跳转进度后，把按理论坐标应仍在飞行的历史弹幕直接预填充上屏，
+  // 避免跳转后屏幕长时间空白、只能等新弹幕从右侧滑出
+  async seek() {
+    const { clientWidth, clientHeight } = this.$player
+
+    // 回收正在飞行的旧弹幕，清空屏幕（seek 清屏职责从宿主移交到这里）
+    this.reset()
+
+    if (this.isHide)
+      return this
+
+    const currentTime = this.art.currentTime
+
+    // 追帧窗口：单条弹幕最长飞行时长为 (屏宽 + 弹幕宽度) / velocity，
+    // 弹幕宽度上界取屏宽，窗口取 3 倍屏宽已覆盖最坏情况，多出的由下方 restTime 精确过滤；
+    // 下边界与 readys 的 ±0.1s 时间窗对齐排除，避免与正常渲染循环重复上屏
+    const maxElapsed = (clientWidth * 3) / this.velocity
+
+    const candidates = this.queue
+      .filter(danmu => danmu.time <= currentTime - 0.1 && danmu.time > currentTime - maxElapsed)
+      .sort((a, b) => a.time - b.time)
+
+    if (candidates.length === 0)
+      return this
+
+    // 代际标记：拖动进度条会连续触发 seeked，过期批次的异步结果直接丢弃
+    const generation = (this._seekGeneration = (this._seekGeneration || 0) + 1)
+
+    for (const danmu of candidates) {
+      const elapsed = currentTime - danmu.time
+      const currentX = clientWidth - elapsed * this.velocity
+
+      this.decorateDanmu(danmu)
+
+      const width = danmu.$ref.clientWidth
+      const totalFlyTime = (clientWidth + width) / this.velocity
+      const restTime = danmu.mode === 1 ? totalFlyTime / 2 - elapsed : totalFlyTime - elapsed
+
+      // 已完全飞出或已到期的弹幕不再上屏，节点直接回池
+      if (restTime <= 0 || currentX + width <= 0) {
+        this.$refs.push(danmu.$ref)
+        danmu.$ref = null
+        continue
+      }
+
+      // 逐条计算轨道，让 visibles 快照包含刚上屏的弹幕，保证弹幕间距设计对预填充同样生效
+      const { result: top } = await this.postMessage({
+        type: 'getDanmuTop',
+        target: {
+          mode: danmu.mode,
+          height: danmu.$ref.clientHeight,
+          width,
+          isHero: !!danmu._isHero,
+          entryX: currentX, // 预填充从理论位置入轨；正常发射不传，默认屏幕右缘
+        },
+        visibles: this.visibles,
+        antiOverlap: this.option.antiOverlap,
+        gap: this.option.gap,
+        fontSize: this.fontSize,
+        clientWidth,
+        clientHeight,
+        marginBottom: this.marginBottom,
+        marginTop: this.marginTop,
+      })
+
+      // 期间又发生了 seek（批次过期）或节点已被 reset 回收：终止本批次
+      if (generation !== this._seekGeneration || !danmu.$ref)
+        break
+
+      if (top === undefined) {
+        // 无可用轨道：与直播时的轨道分配结果一致，放弃该弹幕（节点回池）
+        this.$refs.push(danmu.$ref)
+        danmu.$ref = null
+        continue
+      }
+
+      this.setState(danmu, 'emit')
+      danmu.top = top
+      danmu.$restTime = restTime
+      danmu.$lastStartTime = Date.now()
+      danmu.$ref.style.top = `${top}px`
+      danmu.$ref.style.visibility = 'visible'
+      danmu.$ref.dataset.mode = danmu.mode
+      danmu.$ref.dataset.id = danmu.id || ''
+
+      if (danmu._isHero)
+        this.clearHeroOverlap(danmu, top)
+
+      switch (danmu.mode) {
+        case 0: {
+          // 先无动画定位到理论位置，强制回流后从当前位置以剩余时长线性滑向屏幕左外侧
+          danmu.$ref.style.left = '0px'
+          danmu.$ref.style.marginLeft = '0px'
+          danmu.$ref.style.transform = `translateX(${currentX}px)`
+          danmu.$ref.style.transition = 'none'
+          // eslint-disable-next-line no-unused-expressions
+          danmu.$ref.clientWidth
+          danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`
+          danmu.$ref.style.transition = `transform ${restTime}s linear 0s`
+          break
+        }
+        case 1: {
+          danmu.$ref.style.left = '50%'
+          danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`
+          break
+        }
+      }
+
+      this.art.emit('artplayerPluginDanmuku:visible', danmu)
+    }
+
+    // 暂停/缓冲中 seek：冻结刚上屏的弹幕，恢复播放时由 continue() 无缝续飞
+    if (generation === this._seekGeneration && (this.isStop || !this.art.playing))
+      this.suspend()
+
+    return this
+  }
+
   // 暂停弹幕
   suspend() {
     this.filter('emit', (danmu) => {
@@ -1024,6 +1153,7 @@ export default class Danmuku {
     this.art.off('video:pause', this.stop)
     this.art.off('video:waiting', this.stop)
     this.art.off('video:ratechange', this.rateChange)
+    this.art.off('video:seeked', this.seek)
     this.art.off('resize', this.resize)
     this.art.off('destroy', this.destroy)
     this.art.emit('artplayerPluginDanmuku:destroy')

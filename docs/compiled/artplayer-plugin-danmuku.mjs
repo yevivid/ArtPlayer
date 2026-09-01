@@ -146,7 +146,7 @@ function WorkerWrapper$1(options) {
     );
   }
 }
-const jsContent = '/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nconst ENDING_CHARS = new Set(".。,，/…~～@^、+=-_♂♀ ");\nconst TRIM_EXTRA_SPACE_RE = /[ \\u3000]+/g;\nconst TRIM_CJK_SPACE_RE = /([\\u3000-\\u9FFF\\uFF00-\\uFFEF]) (?=[\\u3000-\\u9FFF\\uFF00-\\uFFEF])/g;\nconst WIDTH_ENTRIES = [\n  ["　", " "],\n  ["１", "1"],\n  ["２", "2"],\n  ["３", "3"],\n  ["４", "4"],\n  ["５", "5"],\n  ["６", "6"],\n  ["７", "7"],\n  ["８", "8"],\n  ["９", "9"],\n  ["０", "0"],\n  ["！", "!"],\n  ["＠", "@"],\n  ["＃", "#"],\n  ["＄", "$"],\n  ["％", "%"],\n  ["＾", "^"],\n  ["＆", "&"],\n  ["＊", "*"],\n  ["（", "("],\n  ["）", ")"],\n  ["－", "-"],\n  ["＝", "="],\n  ["＿", "_"],\n  ["＋", "+"],\n  ["［", "["],\n  ["］", "]"],\n  ["｛", "{"],\n  ["｝", "}"],\n  ["；", ";"],\n  ["：", ":"],\n  ["，", ","],\n  ["．", "."],\n  ["／", "/"],\n  ["＜", "<"],\n  ["＞", ">"],\n  ["？", "?"],\n  ["｜", "|"],\n  ["～", "~"],\n  ["ｑ", "q"],\n  ["ｗ", "w"],\n  ["ｅ", "e"],\n  ["ｒ", "r"],\n  ["ｔ", "t"],\n  ["ｙ", "y"],\n  ["ｕ", "u"],\n  ["ｉ", "i"],\n  ["ｏ", "o"],\n  ["ｐ", "p"],\n  ["ａ", "a"],\n  ["ｓ", "s"],\n  ["ｄ", "d"],\n  ["ｆ", "f"],\n  ["ｇ", "g"],\n  ["ｈ", "h"],\n  ["ｊ", "j"],\n  ["ｋ", "k"],\n  ["ｌ", "l"],\n  ["ｚ", "z"],\n  ["ｘ", "x"],\n  ["ｃ", "c"],\n  ["ｖ", "v"],\n  ["ｂ", "b"],\n  ["ｎ", "n"],\n  ["ｍ", "m"],\n  ["Ｑ", "Q"],\n  ["Ｗ", "W"],\n  ["Ｅ", "E"],\n  ["Ｒ", "R"],\n  ["Ｔ", "T"],\n  ["Ｙ", "Y"],\n  ["Ｕ", "U"],\n  ["Ｉ", "I"],\n  ["Ｏ", "O"],\n  ["Ｐ", "P"],\n  ["Ａ", "A"],\n  ["Ｓ", "S"],\n  ["Ｄ", "D"],\n  ["Ｆ", "F"],\n  ["Ｇ", "G"],\n  ["Ｈ", "H"],\n  ["Ｊ", "J"],\n  ["Ｋ", "K"],\n  ["Ｌ", "L"],\n  ["Ｚ", "Z"],\n  ["Ｘ", "X"],\n  ["Ｃ", "C"],\n  ["Ｖ", "V"],\n  ["Ｂ", "B"],\n  ["Ｎ", "N"],\n  ["Ｍ", "M"]\n];\nconst WIDTH_TABLE = new Map(WIDTH_ENTRIES);\nconst DEFAULT_FORCELIST = [[/^23{2,}$/, "23333"], [/^6{3,}$/, "66666"]];\nfunction preprocessDefault(text) {\n  if (!text || typeof text !== "string")\n    return text;\n  let len = text.length;\n  while (len > 0 && ENDING_CHARS.has(text.charAt(len - 1))) len--;\n  if (len === 0)\n    len = text.length;\n  let result = "";\n  for (let i = 0; i < len; i++) {\n    const c = text.charAt(i);\n    result += WIDTH_TABLE.get(c) || c;\n  }\n  result = result.replace(TRIM_EXTRA_SPACE_RE, " ").replace(TRIM_CJK_SPACE_RE, "$1");\n  for (const [pattern, replacement] of DEFAULT_FORCELIST) {\n    if (pattern.test(result)) {\n      result = result.replace(pattern, replacement);\n      break;\n    }\n  }\n  return result;\n}\nlet wasmExports = null;\nlet wasmMemory = null;\nlet HEAP16 = null;\nlet ptrBuf = 0;\nconst MAX_STRING_LEN = 16005;\nasync function initWasm(wasmUrl) {\n  const resp = await fetch(wasmUrl);\n  const wasmBinary = await resp.arrayBuffer();\n  const wasmModule = await WebAssembly.compile(wasmBinary);\n  const imports = {\n    env: {\n      _abort_js: () => {\n        throw new Error("wasm abort");\n      },\n      emscripten_resize_heap: () => false,\n      fd_close: () => 8,\n      fd_seek: () => 70,\n      fd_write: () => 0\n    },\n    wasi_snapshot_preview1: {\n      fd_close: () => 8,\n      fd_seek: () => 70,\n      fd_write: () => 0\n    }\n  };\n  const instance = await WebAssembly.instantiate(wasmModule, imports);\n  wasmExports = instance.exports;\n  wasmMemory = wasmExports.memory;\n  const buffer = wasmMemory.buffer;\n  HEAP16 = new Int16Array(buffer);\n  if (wasmExports.__wasm_call_ctors) {\n    wasmExports.__wasm_call_ctors();\n  }\n  ptrBuf = wasmExports.malloc(MAX_STRING_LEN * 2 + 7);\n  if (ptrBuf % 2)\n    ptrBuf++;\n  return true;\n}\nfunction stringToUTF16(str, ptr, maxBytes) {\n  if (ptr % 2)\n    throw new Error("Pointer must be aligned to two bytes");\n  const maxChars = Math.floor((maxBytes - 2) / 2);\n  const len = Math.min(str.length, maxChars);\n  for (let i = 0; i < len; i++) {\n    HEAP16[(ptr >> 1) + i] = str.charCodeAt(i);\n  }\n  HEAP16[(ptr >> 1) + len] = 0;\n  return len * 2;\n}\nfunction beginChunk(maxDist, maxCosine, trimPinyin, crossMode) {\n  wasmExports.begin_chunk(ptrBuf, maxDist, maxCosine, 1, 1);\n}\nfunction detectSimilarity(str, mode, indexL) {\n  stringToUTF16(str, ptrBuf, MAX_STRING_LEN * 2);\n  const ret = wasmExports.check_similar(mode, indexL);\n  if (ret === 0)\n    return null;\n  const unsigned = ret >>> 0;\n  const reason = unsigned >>> 30;\n  const dist = unsigned >>> 19 & (1 << 11) - 1;\n  const idxDiff = unsigned & (1 << 19) - 1;\n  const REASON = ["==", "edit", "pinyin", "cosine"];\n  return { reason: REASON[reason] || "unknown", dist, idxDiff };\n}\nfunction selectMedianLength(strs) {\n  if (strs.length === 1)\n    return strs[0];\n  const sorted = [...strs].sort((a, b) => a.length - b.length);\n  return sorted[Math.floor(sorted.length / 2)];\n}\nconst CHUNK_SIZE = 5e3;\nfunction processChunk(chunkItems, opts) {\n  const { threshold, maxDist, maxCosine } = opts;\n  const THRESHOLD_MS = threshold * 1e3;\n  beginChunk(maxDist, maxCosine);\n  const storage = [];\n  let indexL = 0;\n  let indexR = 0;\n  for (let i = 0; i < chunkItems.length; i++) {\n    const dm = chunkItems[i];\n    const dmTimeMs = (dm.time || 0) * 1e3;\n    const normalized = dm._normalizedText || dm.text;\n    while (indexL < indexR) {\n      const peeked = storage[indexL];\n      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS)\n        break;\n      indexL++;\n    }\n    const sim = detectSimilarity(normalized, dm.mode || 0, indexL);\n    if (sim) {\n      const targetIdx = indexR - sim.idxDiff;\n      if (targetIdx >= 0 && targetIdx < storage.length) {\n        storage[targetIdx].items.push(dm);\n      } else {\n        storage[indexR] = { timeMs: dmTimeMs, items: [dm] };\n        indexR++;\n      }\n    } else {\n      storage[indexR] = { timeMs: dmTimeMs, items: [dm] };\n      indexR++;\n    }\n  }\n  return storage;\n}\nfunction mergeDanmuku(danmuku, options = {}) {\n  const { threshold = 30, maxDist = 5, maxCosine = 45 } = options;\n  if (!danmuku || danmuku.length === 0)\n    return [];\n  const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0));\n  const opts = { threshold, maxDist, maxCosine };\n  const allClusters = [];\n  for (let start = 0; start < sorted.length; start += CHUNK_SIZE) {\n    const end = Math.min(start + CHUNK_SIZE, sorted.length);\n    const chunk = sorted.slice(start, end);\n    const clusters = processChunk(chunk, opts);\n    for (let i = 0; i < clusters.length; i++) allClusters.push(clusters[i]);\n  }\n  const result = [];\n  for (let i = 0; i < allClusters.length; i++) {\n    const cluster = allClusters[i];\n    if (cluster.items.length === 1) {\n      const dm = { ...cluster.items[0] };\n      delete dm._normalizedText;\n      result.push(dm);\n    } else {\n      const textCounts = /* @__PURE__ */ new Map();\n      for (const item of cluster.items) {\n        const t = item._normalizedText || item.text;\n        textCounts.set(t, (textCounts.get(t) || 0) + 1);\n      }\n      let maxCount = 0;\n      for (const [, count] of textCounts) {\n        if (count > maxCount)\n          maxCount = count;\n      }\n      const chosenText = selectMedianLength(\n        [...textCounts.entries()].filter(([, c]) => c === maxCount).map(([t]) => t)\n      );\n      const times = cluster.items.map((d) => d.time || 0).sort((a, b) => a - b);\n      const mid = Math.floor(times.length / 2);\n      const medianTime = times.length % 2 === 0 ? (times[mid - 1] + times[mid]) / 2 : times[mid];\n      const repr = { ...cluster.items[0], time: medianTime, text: chosenText, _mergeCount: cluster.items.length };\n      delete repr._normalizedText;\n      result.push(repr);\n    }\n  }\n  return result;\n}\nfunction getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom, marginTop, antiOverlap, gap, fontSize }) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = gap / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const totalTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const normalCount = visibles.filter((item) => item.mode === 1 && !item.isHero).length;\n    if (!target.isHero && normalCount >= Math.floor(totalTracks / 2))\n      return void 0;\n    const occupied = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).map((item) => ({ top: item.top, bottom: item.top + item.height }));\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      const tryBottom = tryTop + target.height;\n      if (target.isHero || !occupied.some((r) => tryTop < r.bottom && tryBottom > r.top)) {\n        available.push(tryTop);\n      }\n    }\n    return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : void 0;\n  }\n  if (target.mode === 0) {\n    const rolling = visibles.filter((item) => item.mode === 0);\n    const occupiedTracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!occupiedTracks.has(currentTop) || rightEdge > occupiedTracks.get(currentTop))\n        occupiedTracks.set(currentTop, rightEdge);\n    });\n    const allTrackPositions = [];\n    for (let trackTop = marginTop; trackTop + target.height <= maxTop; trackTop += trackHeight) allTrackPositions.push(trackTop);\n    if (allTrackPositions.length === 0)\n      return void 0;\n    const availableTracks = [];\n    for (const trackTop of allTrackPositions) {\n      if (!occupiedTracks.has(trackTop)) {\n        availableTracks.push(trackTop);\n      } else {\n        const lastRight = occupiedTracks.get(trackTop);\n        if (lastRight + minHorizontalGap <= clientWidth)\n          availableTracks.push(trackTop);\n      }\n    }\n    if (availableTracks.length > 0)\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(occupiedTracks.keys()).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({ top, height: target.height }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prevBottom = virtualDanmus[i - 1].top + virtualDanmus[i - 1].height;\n        const diff = virtualDanmus[i].top - prevBottom;\n        if (diff >= target.height + 18 && prevBottom + target.height <= maxTop)\n          availableGaps.push(prevBottom);\n      }\n      if (availableGaps.length > 0)\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = async (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  let result;\n  if (data.type === "getDanmuTop") {\n    result = getDanmuTop(data);\n  } else if (data.type === "mergeDanmuku") {\n    const { danmus, options } = data;\n    if (!wasmExports && options.wasmUrl) {\n      await initWasm(options.wasmUrl);\n    }\n    if (options.preprocess) {\n      for (let i = 0; i < danmus.length; i++) {\n        const dm = danmus[i];\n        if (dm && dm.text)\n          dm._normalizedText = preprocessDefault(dm.text);\n      }\n    }\n    if (options.merge && danmus.length > 0 && wasmExports) {\n      result = mergeDanmuku(danmus, options);\n    } else {\n      result = danmus;\n    }\n  }\n  globalThis.postMessage({ result, id: data.id });\n};\n';
+const jsContent = '/*!\n * artplayer-plugin-danmuku.js v5.3.0\n * Github: https://github.com/zhw2590582/ArtPlayer\n * (c) 2017-2026 Harvey Zhao\n * Released under the MIT License.\n */\nconst ENDING_CHARS = new Set(".。,，/…~～@^、+=-_♂♀ ");\nconst TRIM_EXTRA_SPACE_RE = /[ \\u3000]+/g;\nconst TRIM_CJK_SPACE_RE = /([\\u3000-\\u9FFF\\uFF00-\\uFFEF]) (?=[\\u3000-\\u9FFF\\uFF00-\\uFFEF])/g;\nconst WIDTH_ENTRIES = [\n  ["　", " "],\n  ["１", "1"],\n  ["２", "2"],\n  ["３", "3"],\n  ["４", "4"],\n  ["５", "5"],\n  ["６", "6"],\n  ["７", "7"],\n  ["８", "8"],\n  ["９", "9"],\n  ["０", "0"],\n  ["！", "!"],\n  ["＠", "@"],\n  ["＃", "#"],\n  ["＄", "$"],\n  ["％", "%"],\n  ["＾", "^"],\n  ["＆", "&"],\n  ["＊", "*"],\n  ["（", "("],\n  ["）", ")"],\n  ["－", "-"],\n  ["＝", "="],\n  ["＿", "_"],\n  ["＋", "+"],\n  ["［", "["],\n  ["］", "]"],\n  ["｛", "{"],\n  ["｝", "}"],\n  ["；", ";"],\n  ["：", ":"],\n  ["，", ","],\n  ["．", "."],\n  ["／", "/"],\n  ["＜", "<"],\n  ["＞", ">"],\n  ["？", "?"],\n  ["｜", "|"],\n  ["～", "~"],\n  ["ｑ", "q"],\n  ["ｗ", "w"],\n  ["ｅ", "e"],\n  ["ｒ", "r"],\n  ["ｔ", "t"],\n  ["ｙ", "y"],\n  ["ｕ", "u"],\n  ["ｉ", "i"],\n  ["ｏ", "o"],\n  ["ｐ", "p"],\n  ["ａ", "a"],\n  ["ｓ", "s"],\n  ["ｄ", "d"],\n  ["ｆ", "f"],\n  ["ｇ", "g"],\n  ["ｈ", "h"],\n  ["ｊ", "j"],\n  ["ｋ", "k"],\n  ["ｌ", "l"],\n  ["ｚ", "z"],\n  ["ｘ", "x"],\n  ["ｃ", "c"],\n  ["ｖ", "v"],\n  ["ｂ", "b"],\n  ["ｎ", "n"],\n  ["ｍ", "m"],\n  ["Ｑ", "Q"],\n  ["Ｗ", "W"],\n  ["Ｅ", "E"],\n  ["Ｒ", "R"],\n  ["Ｔ", "T"],\n  ["Ｙ", "Y"],\n  ["Ｕ", "U"],\n  ["Ｉ", "I"],\n  ["Ｏ", "O"],\n  ["Ｐ", "P"],\n  ["Ａ", "A"],\n  ["Ｓ", "S"],\n  ["Ｄ", "D"],\n  ["Ｆ", "F"],\n  ["Ｇ", "G"],\n  ["Ｈ", "H"],\n  ["Ｊ", "J"],\n  ["Ｋ", "K"],\n  ["Ｌ", "L"],\n  ["Ｚ", "Z"],\n  ["Ｘ", "X"],\n  ["Ｃ", "C"],\n  ["Ｖ", "V"],\n  ["Ｂ", "B"],\n  ["Ｎ", "N"],\n  ["Ｍ", "M"]\n];\nconst WIDTH_TABLE = new Map(WIDTH_ENTRIES);\nconst DEFAULT_FORCELIST = [[/^23{2,}$/, "23333"], [/^6{3,}$/, "66666"]];\nfunction preprocessDefault(text) {\n  if (!text || typeof text !== "string")\n    return text;\n  let len = text.length;\n  while (len > 0 && ENDING_CHARS.has(text.charAt(len - 1))) len--;\n  if (len === 0)\n    len = text.length;\n  let result = "";\n  for (let i = 0; i < len; i++) {\n    const c = text.charAt(i);\n    result += WIDTH_TABLE.get(c) || c;\n  }\n  result = result.replace(TRIM_EXTRA_SPACE_RE, " ").replace(TRIM_CJK_SPACE_RE, "$1");\n  for (const [pattern, replacement] of DEFAULT_FORCELIST) {\n    if (pattern.test(result)) {\n      result = result.replace(pattern, replacement);\n      break;\n    }\n  }\n  return result;\n}\nlet wasmExports = null;\nlet wasmMemory = null;\nlet HEAP16 = null;\nlet ptrBuf = 0;\nconst MAX_STRING_LEN = 16005;\nasync function initWasm(wasmUrl) {\n  const resp = await fetch(wasmUrl);\n  const wasmBinary = await resp.arrayBuffer();\n  const wasmModule = await WebAssembly.compile(wasmBinary);\n  const imports = {\n    env: {\n      _abort_js: () => {\n        throw new Error("wasm abort");\n      },\n      emscripten_resize_heap: () => false,\n      fd_close: () => 8,\n      fd_seek: () => 70,\n      fd_write: () => 0\n    },\n    wasi_snapshot_preview1: {\n      fd_close: () => 8,\n      fd_seek: () => 70,\n      fd_write: () => 0\n    }\n  };\n  const instance = await WebAssembly.instantiate(wasmModule, imports);\n  wasmExports = instance.exports;\n  wasmMemory = wasmExports.memory;\n  const buffer = wasmMemory.buffer;\n  HEAP16 = new Int16Array(buffer);\n  if (wasmExports.__wasm_call_ctors) {\n    wasmExports.__wasm_call_ctors();\n  }\n  ptrBuf = wasmExports.malloc(MAX_STRING_LEN * 2 + 7);\n  if (ptrBuf % 2)\n    ptrBuf++;\n  return true;\n}\nfunction stringToUTF16(str, ptr, maxBytes) {\n  if (ptr % 2)\n    throw new Error("Pointer must be aligned to two bytes");\n  const maxChars = Math.floor((maxBytes - 2) / 2);\n  const len = Math.min(str.length, maxChars);\n  for (let i = 0; i < len; i++) {\n    HEAP16[(ptr >> 1) + i] = str.charCodeAt(i);\n  }\n  HEAP16[(ptr >> 1) + len] = 0;\n  return len * 2;\n}\nfunction beginChunk(maxDist, maxCosine, trimPinyin, crossMode) {\n  wasmExports.begin_chunk(ptrBuf, maxDist, maxCosine, 1, 1);\n}\nfunction detectSimilarity(str, mode, indexL) {\n  stringToUTF16(str, ptrBuf, MAX_STRING_LEN * 2);\n  const ret = wasmExports.check_similar(mode, indexL);\n  if (ret === 0)\n    return null;\n  const unsigned = ret >>> 0;\n  const reason = unsigned >>> 30;\n  const dist = unsigned >>> 19 & (1 << 11) - 1;\n  const idxDiff = unsigned & (1 << 19) - 1;\n  const REASON = ["==", "edit", "pinyin", "cosine"];\n  return { reason: REASON[reason] || "unknown", dist, idxDiff };\n}\nfunction selectMedianLength(strs) {\n  if (strs.length === 1)\n    return strs[0];\n  const sorted = [...strs].sort((a, b) => a.length - b.length);\n  return sorted[Math.floor(sorted.length / 2)];\n}\nconst CHUNK_SIZE = 5e3;\nfunction processChunk(chunkItems, opts) {\n  const { threshold, maxDist, maxCosine } = opts;\n  const THRESHOLD_MS = threshold * 1e3;\n  beginChunk(maxDist, maxCosine);\n  const storage = [];\n  let indexL = 0;\n  let indexR = 0;\n  for (let i = 0; i < chunkItems.length; i++) {\n    const dm = chunkItems[i];\n    const dmTimeMs = (dm.time || 0) * 1e3;\n    const normalized = dm._normalizedText || dm.text;\n    while (indexL < indexR) {\n      const peeked = storage[indexL];\n      if (!peeked || dmTimeMs - peeked.timeMs <= THRESHOLD_MS)\n        break;\n      indexL++;\n    }\n    const sim = detectSimilarity(normalized, dm.mode || 0, indexL);\n    if (sim) {\n      const targetIdx = indexR - sim.idxDiff;\n      if (targetIdx >= 0 && targetIdx < storage.length) {\n        storage[targetIdx].items.push(dm);\n      } else {\n        storage[indexR] = { timeMs: dmTimeMs, items: [dm] };\n        indexR++;\n      }\n    } else {\n      storage[indexR] = { timeMs: dmTimeMs, items: [dm] };\n      indexR++;\n    }\n  }\n  return storage;\n}\nfunction mergeDanmuku(danmuku, options = {}) {\n  const { threshold = 30, maxDist = 5, maxCosine = 45 } = options;\n  if (!danmuku || danmuku.length === 0)\n    return [];\n  const sorted = [...danmuku].sort((a, b) => (a.time || 0) - (b.time || 0));\n  const opts = { threshold, maxDist, maxCosine };\n  const allClusters = [];\n  for (let start = 0; start < sorted.length; start += CHUNK_SIZE) {\n    const end = Math.min(start + CHUNK_SIZE, sorted.length);\n    const chunk = sorted.slice(start, end);\n    const clusters = processChunk(chunk, opts);\n    for (let i = 0; i < clusters.length; i++) allClusters.push(clusters[i]);\n  }\n  const result = [];\n  for (let i = 0; i < allClusters.length; i++) {\n    const cluster = allClusters[i];\n    if (cluster.items.length === 1) {\n      const dm = { ...cluster.items[0] };\n      delete dm._normalizedText;\n      result.push(dm);\n    } else {\n      const textCounts = /* @__PURE__ */ new Map();\n      for (const item of cluster.items) {\n        const t = item._normalizedText || item.text;\n        textCounts.set(t, (textCounts.get(t) || 0) + 1);\n      }\n      let maxCount = 0;\n      for (const [, count] of textCounts) {\n        if (count > maxCount)\n          maxCount = count;\n      }\n      const chosenText = selectMedianLength(\n        [...textCounts.entries()].filter(([, c]) => c === maxCount).map(([t]) => t)\n      );\n      const times = cluster.items.map((d) => d.time || 0).sort((a, b) => a - b);\n      const mid = Math.floor(times.length / 2);\n      const medianTime = times.length % 2 === 0 ? (times[mid - 1] + times[mid]) / 2 : times[mid];\n      const repr = { ...cluster.items[0], time: medianTime, text: chosenText, _mergeCount: cluster.items.length };\n      delete repr._normalizedText;\n      result.push(repr);\n    }\n  }\n  return result;\n}\nfunction getDanmuTop({ target, visibles, clientWidth, clientHeight, marginBottom, marginTop, antiOverlap, gap, fontSize }) {\n  const maxTop = clientHeight - marginBottom;\n  const minGapRatio = gap / 100;\n  const minHorizontalGap = Math.max(20, clientWidth * minGapRatio);\n  const trackHeight = Math.ceil(fontSize * 1.125);\n  if (target.mode === 1) {\n    const totalTracks = Math.floor((maxTop - marginTop) / trackHeight);\n    const normalCount = visibles.filter((item) => item.mode === 1 && !item.isHero).length;\n    if (!target.isHero && normalCount >= Math.floor(totalTracks / 2))\n      return void 0;\n    const occupied = visibles.filter((item) => item.mode === 1 && item.top < maxTop && item.top + item.height > marginTop).map((item) => ({ top: item.top, bottom: item.top + item.height }));\n    const available = [];\n    for (let tryTop = marginTop; tryTop + target.height <= maxTop; tryTop += trackHeight) {\n      const tryBottom = tryTop + target.height;\n      if (target.isHero || !occupied.some((r) => tryTop < r.bottom && tryBottom > r.top)) {\n        available.push(tryTop);\n      }\n    }\n    return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : void 0;\n  }\n  if (target.mode === 0) {\n    const entryX = target.entryX ?? clientWidth;\n    const rolling = visibles.filter((item) => item.mode === 0);\n    const occupiedTracks = /* @__PURE__ */ new Map();\n    rolling.forEach((d) => {\n      const rightEdge = d.left + d.width;\n      const currentTop = Math.round(d.top);\n      if (!occupiedTracks.has(currentTop) || rightEdge > occupiedTracks.get(currentTop))\n        occupiedTracks.set(currentTop, rightEdge);\n    });\n    const allTrackPositions = [];\n    for (let trackTop = marginTop; trackTop + target.height <= maxTop; trackTop += trackHeight) allTrackPositions.push(trackTop);\n    if (allTrackPositions.length === 0)\n      return void 0;\n    const availableTracks = [];\n    for (const trackTop of allTrackPositions) {\n      if (!occupiedTracks.has(trackTop)) {\n        availableTracks.push(trackTop);\n      } else {\n        const lastRight = occupiedTracks.get(trackTop);\n        if (lastRight + minHorizontalGap <= entryX)\n          availableTracks.push(trackTop);\n      }\n    }\n    if (availableTracks.length > 0)\n      return availableTracks[Math.floor(Math.random() * availableTracks.length)];\n    if (antiOverlap && rolling.length > 0) {\n      const sortedTracks = Array.from(occupiedTracks.keys()).sort((a, b) => a - b);\n      const virtualDanmus = sortedTracks.map((top) => ({ top, height: target.height }));\n      virtualDanmus.unshift({ top: 0, height: marginTop });\n      virtualDanmus.push({ top: maxTop, height: marginBottom });\n      const availableGaps = [];\n      for (let i = 1; i < virtualDanmus.length; i++) {\n        const prevBottom = virtualDanmus[i - 1].top + virtualDanmus[i - 1].height;\n        const diff = virtualDanmus[i].top - prevBottom;\n        if (diff >= target.height + 18 && prevBottom + target.height <= maxTop)\n          availableGaps.push(prevBottom);\n      }\n      if (availableGaps.length > 0)\n        return availableGaps[Math.floor(Math.random() * availableGaps.length)];\n    }\n    return void 0;\n  }\n  return marginTop;\n}\nonmessage = async (event) => {\n  const { data } = event;\n  if (!data.id || !data.type)\n    return;\n  let result;\n  if (data.type === "getDanmuTop") {\n    result = getDanmuTop(data);\n  } else if (data.type === "mergeDanmuku") {\n    const { danmus, options } = data;\n    if (!wasmExports && options.wasmUrl) {\n      await initWasm(options.wasmUrl);\n    }\n    if (options.preprocess) {\n      for (let i = 0; i < danmus.length; i++) {\n        const dm = danmus[i];\n        if (dm && dm.text)\n          dm._normalizedText = preprocessDefault(dm.text);\n      }\n    }\n    if (options.merge && danmus.length > 0 && wasmExports) {\n      result = mergeDanmuku(danmus, options);\n    } else {\n      result = danmus;\n    }\n  }\n  globalThis.postMessage({ result, id: data.id });\n};\n';
 const blob = typeof self !== "undefined" && self.Blob && new Blob(["URL.revokeObjectURL(import.meta.url);", jsContent], { type: "text/javascript;charset=utf-8" });
 function WorkerWrapper(options) {
   let objURL;
@@ -196,6 +196,7 @@ class Danmuku {
     this._pendingMessages = /* @__PURE__ */ new Map();
     this.loading = false;
     this._playbackRate = Number(art.playbackRate) || 1;
+    this._seekGeneration = 0;
     this.option = Danmuku.option;
     this.states = { wait: [], ready: [], emit: [], stop: [] };
     this.config(option, true);
@@ -213,10 +214,12 @@ class Danmuku {
     this.resize = this.resize.bind(this);
     this.destroy = this.destroy.bind(this);
     this.rateChange = this.rateChange.bind(this);
+    this.seek = this.seek.bind(this);
     art.on("video:playing", this.start);
     art.on("video:pause", this.stop);
     art.on("video:waiting", this.stop);
     art.on("video:ratechange", this.rateChange);
+    art.on("video:seeked", this.seek);
     art.on("destroy", this.destroy);
     art.on("resize", this.resize);
     this.load();
@@ -745,9 +748,45 @@ class Danmuku {
       danmu.$ref = null;
     }
   }
+  // 创建弹幕 DOM 节点并应用基础样式（正常发射与 seek 预填充共用）
+  decorateDanmu(danmu) {
+    const { setStyles } = this.utils;
+    danmu.$ref = this.$ref;
+    danmu.$ref.textContent = danmu.text;
+    if (danmu._mergeCount && danmu._mergeCount > 1) {
+      const mark = document.createElement("span");
+      mark.className = "art-danmuku-merge-mark";
+      mark.textContent = ` ∑ ${danmu._mergeCount}`;
+      danmu.$ref.appendChild(mark);
+    }
+    this.$danmuku.appendChild(danmu.$ref);
+    danmu.$ref.style.opacity = this.option.opacity;
+    danmu.$ref.style.color = danmu.color;
+    danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null;
+    danmu.$ref.style.backgroundColor = danmu.border ? "rgb(0 0 0 / 50%)" : null;
+    if (danmu._isHero) {
+      const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3);
+      danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`;
+      danmu.$ref.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
+    } else {
+      danmu.$ref.style.fontSize = `${this.fontSize}px`;
+    }
+    setStyles(danmu.$ref, danmu.style);
+  }
+  // 英雄弹幕：清除与它重叠的普通顶部弹幕
+  clearHeroOverlap(danmu, heroTop) {
+    const heroBottom = heroTop + danmu.$ref.clientHeight;
+    this.filter("emit", (other) => {
+      if (other === danmu || other.mode !== 1 || other._isHero)
+        return;
+      const otherTop = other.top ?? other.$ref.offsetTop;
+      const otherBottom = otherTop + (other.$ref?.clientHeight || 0);
+      if (heroTop < otherBottom && heroBottom > otherTop)
+        this.makeWait(other);
+    });
+  }
   // 实时更新弹幕
   update() {
-    const { setStyles } = this.utils;
     this.timer = window.requestAnimationFrame(async () => {
       if (this.art.playing && !this.isHide) {
         this.filter("emit", (danmu) => {
@@ -773,27 +812,7 @@ class Danmuku {
               debug$1("即将显示:", { text: danmu.text, time: danmu.time });
             }
             const { clientWidth, clientHeight } = this.$player;
-            danmu.$ref = this.$ref;
-            danmu.$ref.textContent = danmu.text;
-            if (danmu._mergeCount && danmu._mergeCount > 1) {
-              const mark = document.createElement("span");
-              mark.className = "art-danmuku-merge-mark";
-              mark.textContent = ` ∑ ${danmu._mergeCount}`;
-              danmu.$ref.appendChild(mark);
-            }
-            this.$danmuku.appendChild(danmu.$ref);
-            danmu.$ref.style.opacity = this.option.opacity;
-            danmu.$ref.style.color = danmu.color;
-            danmu.$ref.style.border = danmu.border ? `1px solid ${danmu.color}` : null;
-            danmu.$ref.style.backgroundColor = danmu.border ? "rgb(0 0 0 / 50%)" : null;
-            if (danmu._isHero) {
-              const rate = Math.min(Math.log(danmu._mergeCount) / Math.log(5), 3);
-              danmu.$ref.style.fontSize = `${Math.ceil(this.fontSize * rate)}px`;
-              danmu.$ref.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
-            } else {
-              danmu.$ref.style.fontSize = `${this.fontSize}px`;
-            }
-            setStyles(danmu.$ref, danmu.style);
+            this.decorateDanmu(danmu);
             danmu.$lastStartTime = Date.now();
             const distance = clientWidth + danmu.$ref.clientWidth;
             danmu.$restTime = distance / this.velocity;
@@ -832,18 +851,8 @@ class Danmuku {
                 danmu.$ref.style.visibility = "visible";
                 danmu.$ref.dataset.mode = danmu.mode;
                 danmu.$ref.dataset.id = danmu.id || "";
-                if (danmu._isHero) {
-                  const heroBottom = finalTop + danmu.$ref.clientHeight;
-                  this.filter("emit", (other) => {
-                    if (other === danmu || other.mode !== 1 || other._isHero)
-                      return;
-                    const otherTop = other.top ?? other.$ref.offsetTop;
-                    const otherBottom = otherTop + (other.$ref?.clientHeight || 0);
-                    if (finalTop < otherBottom && heroBottom > otherTop) {
-                      this.makeWait(other);
-                    }
-                  });
-                }
+                if (danmu._isHero)
+                  this.clearHeroOverlap(danmu, finalTop);
                 switch (danmu.mode) {
                   case 0: {
                     danmu.$ref.style.left = "0px";
@@ -931,6 +940,90 @@ class Danmuku {
     });
     return this;
   }
+  // seek 快照追帧：跳转进度后，把按理论坐标应仍在飞行的历史弹幕直接预填充上屏，
+  // 避免跳转后屏幕长时间空白、只能等新弹幕从右侧滑出
+  async seek() {
+    const { clientWidth, clientHeight } = this.$player;
+    this.reset();
+    if (this.isHide)
+      return this;
+    const currentTime = this.art.currentTime;
+    const maxElapsed = clientWidth * 3 / this.velocity;
+    const candidates = this.queue.filter((danmu) => danmu.time <= currentTime - 0.1 && danmu.time > currentTime - maxElapsed).sort((a, b) => a.time - b.time);
+    if (candidates.length === 0)
+      return this;
+    const generation = this._seekGeneration = (this._seekGeneration || 0) + 1;
+    for (const danmu of candidates) {
+      const elapsed = currentTime - danmu.time;
+      const currentX = clientWidth - elapsed * this.velocity;
+      this.decorateDanmu(danmu);
+      const width = danmu.$ref.clientWidth;
+      const totalFlyTime = (clientWidth + width) / this.velocity;
+      const restTime = danmu.mode === 1 ? totalFlyTime / 2 - elapsed : totalFlyTime - elapsed;
+      if (restTime <= 0 || currentX + width <= 0) {
+        this.$refs.push(danmu.$ref);
+        danmu.$ref = null;
+        continue;
+      }
+      const { result: top } = await this.postMessage({
+        type: "getDanmuTop",
+        target: {
+          mode: danmu.mode,
+          height: danmu.$ref.clientHeight,
+          width,
+          isHero: !!danmu._isHero,
+          entryX: currentX
+          // 预填充从理论位置入轨；正常发射不传，默认屏幕右缘
+        },
+        visibles: this.visibles,
+        antiOverlap: this.option.antiOverlap,
+        gap: this.option.gap,
+        fontSize: this.fontSize,
+        clientWidth,
+        clientHeight,
+        marginBottom: this.marginBottom,
+        marginTop: this.marginTop
+      });
+      if (generation !== this._seekGeneration || !danmu.$ref)
+        break;
+      if (top === void 0) {
+        this.$refs.push(danmu.$ref);
+        danmu.$ref = null;
+        continue;
+      }
+      this.setState(danmu, "emit");
+      danmu.top = top;
+      danmu.$restTime = restTime;
+      danmu.$lastStartTime = Date.now();
+      danmu.$ref.style.top = `${top}px`;
+      danmu.$ref.style.visibility = "visible";
+      danmu.$ref.dataset.mode = danmu.mode;
+      danmu.$ref.dataset.id = danmu.id || "";
+      if (danmu._isHero)
+        this.clearHeroOverlap(danmu, top);
+      switch (danmu.mode) {
+        case 0: {
+          danmu.$ref.style.left = "0px";
+          danmu.$ref.style.marginLeft = "0px";
+          danmu.$ref.style.transform = `translateX(${currentX}px)`;
+          danmu.$ref.style.transition = "none";
+          danmu.$ref.clientWidth;
+          danmu.$ref.style.transform = `translateX(${-danmu.$ref.clientWidth}px)`;
+          danmu.$ref.style.transition = `transform ${restTime}s linear 0s`;
+          break;
+        }
+        case 1: {
+          danmu.$ref.style.left = "50%";
+          danmu.$ref.style.marginLeft = `-${danmu.$ref.clientWidth / 2}px`;
+          break;
+        }
+      }
+      this.art.emit("artplayerPluginDanmuku:visible", danmu);
+    }
+    if (generation === this._seekGeneration && (this.isStop || !this.art.playing))
+      this.suspend();
+    return this;
+  }
   // 暂停弹幕
   suspend() {
     this.filter("emit", (danmu) => {
@@ -1003,6 +1096,7 @@ class Danmuku {
     this.art.off("video:pause", this.stop);
     this.art.off("video:waiting", this.stop);
     this.art.off("video:ratechange", this.rateChange);
+    this.art.off("video:seeked", this.seek);
     this.art.off("resize", this.resize);
     this.art.off("destroy", this.destroy);
     this.art.emit("artplayerPluginDanmuku:destroy");
